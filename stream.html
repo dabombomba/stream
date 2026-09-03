@@ -1,3 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stream Canvas Viewport</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body, html { width: 100%; height: 100%; background: #090d16; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        
+        /* Master 1080p target canvas that composites everything */
+        #masterStreamCanvas {
+            width: 100vmin;
+            aspect-ratio: 16/9;
+            background: #000000;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.55);
+        }
+        
+        /* Hidden hardware rendering bank layers used to capture frames */
+        .hidden-vault { display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- This canvas collapses all your web pages and cameras into 1 target stream -->
+    <canvas id="masterStreamCanvas" width="1920" height="1080"></canvas>
+    <div id="hiddenMediaVault" class="hidden-vault"></div>
+    <script>
+        // Replace this link with your live deployed Cloudflare Worker URL
+        const WORKER_URL = "https://workers.dev";
+        
+        const controlChannel = new BroadcastChannel("stream_control");
+        const canvas = document.getElementById("masterStreamCanvas");
+        const ctx = canvas.getContext("2d");
+        
+        let peerConnection = null;
+        let masterStream = null;
+        let activeFeeds = {};
+        let productionState = null;
+
+        controlChannel.onmessage = async event => {
+            const { command, value } = event.data;
+            if ("SYNC_PRODUCTION" === command) {
+                productionState = value;
+                await syncMediaAssets(value);
+            }
+            if ("START_BROADCAST" === command) {
+                goLiveViaWHIP();
+            }
+        };
+
+        async function syncMediaAssets(state) {
+            const vault = document.getElementById("hiddenMediaVault");
+            for (const [sourceId, sourceData] of Object.entries(state.sources)) {
+                if (sourceData.type === "hardware" && sourceData.deviceId) {
+                    let video = document.getElementById(sourceId + "_video");
+                    if (!video) {
+                        video = document.createElement("video");
+                        video.id = sourceId + "_video";
+                        video.autoplay = true;
+                        video.playsInline = true;
+                        video.muted = true;
+                        vault.appendChild(video);
+                    }
+                    if (activeFeeds[sourceId] !== sourceData.deviceId) {
+                        try {
+                            const stream = await navigator.mediaDevices.getUserMedia({
+                                video: { deviceId: { exact: sourceData.deviceId }, width: 1920, height: 1080 }
+                            });
+                            video.srcObject = stream;
+                            activeFeeds[sourceId] = sourceData.deviceId;
+                        } catch (err) { console.error(err); }
+                    }
+                }
+            }
+        }
         // The Engine Loop: Draws frames at 60fps, rendering web layers safely
         function renderMasterProductionLoop() {
             requestAnimationFrame(renderMasterProductionLoop);
