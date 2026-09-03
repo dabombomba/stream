@@ -2,303 +2,249 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Master Switcher Production Deck</title>
+    <title>Live Stream Output Canvas Engine</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; display: grid; grid-template-columns: 340px 1fr; gap: 20px; height: 100vh; overflow: hidden; }
-        h1, h2 { text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
-        h1 { font-size: 18px; color: #94a3b8; grid-column: span 2; border-bottom: 2px solid #1e293b; padding-bottom: 10px; height: fit-content; }
-        #left-rail { display: flex; flex-direction: column; gap: 15px; height: calc(100vh - 60px); overflow-y: auto; }
-        #main-workspace { display: flex; flex-direction: column; gap: 15px; height: calc(100vh - 60px); overflow-y: auto; padding-right: 5px; }
-        .card { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
-        h2 { font-size: 12px; color: #a855f7; border-bottom: 1px solid #334155; padding-bottom: 6px; margin-bottom: 12px; }
-        button { background: #3b82f6; color: #fff; border: none; padding: 10px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: all .2s ease; width: 100%; }
-        button:hover { background: #2563eb; transform: translateY(-1px); }
-        button:active { transform: translateY(0); }
-        button.active { background: #a855f7; box-shadow: 0 0 12px rgba(168, 85, 247, 0.4); }
-        button.danger { background: #ef4444; }
-        button.danger:hover { background: #dc2626; }
-        button.success { background: #22c55e; padding: 14px; font-size: 13px; }
-        button.success:hover { background: #16a34a; box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); }
-        .list-item { display: flex; align-items: center; justify-content: space-between; background: #131b2e; padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; border: 1px solid #1e293b; }
-        .editor-row { display: grid; grid-template-columns: 90px 1fr 50px; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 12px; font-family: monospace; }
-        input[type=range] { width: 100%; accent-color: #a855f7; cursor: pointer; }
-        input[type=text], select { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 13px; margin-bottom: 10px; outline: none; }
-        input[type=text]:focus, select:focus { border-color: #3b82f6; }
-        .flex-row { display: flex; gap: 8px; }
-        .help-text { font-size: 12px; color: #64748b; margin-top: -5px; margin-bottom: 10px; display: block; }
+        body, html { width: 100%; height: 100%; background: #090d16; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        
+        /* Enforces a perfect 16:9 aspect ratio target while staying completely resizable friendly on your monitor */
+        #master-stream-viewport {
+            width: 100vmin;
+            aspect-ratio: 16/9;
+            position: relative;
+            background: #000000;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.55);
+            overflow: hidden;
+        }
+
+        /* Standardizes fluid positioning constraints for all video tracks and web iframes */
+        .managed-source {
+            position: absolute;
+            transition: all 0.2s ease-out;
+            border: 0;
+            object-fit: cover;
+            display: none;
+        }
     </style>
 </head>
 <body>
+    <!-- The exact video layout container box that gets composited and broadcast live -->
+    <div id="master-stream-viewport"></div>
 
-    <h1>🎬 Switcher Production Deck</h1>
-    <div id="left-rail">
-        <div class="card" style="border-color: #22c55e;">
-            <h2>Transmission Pipeline</h2>
-            <button id="liveBtn" class="success" onclick="triggerDeployment()">🚀 DEPLOY LIVE BROADCAST</button>
-        </div>
-
-        <div class="card">
-            <h2>Scene Switcher Bank</h2>
-            <div id="scene-list-box"></div>
-            <div style="margin-top: 12px;">
-                <input type="text" id="newSceneName" placeholder="New Scene Name...">
-                <button onclick="createNewSceneProfile()">➕ Create Scene</button>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Global Sources Vault</h2>
-            <div id="sources-vault-box"></div>
-        </div>
-    </div>
-
-    <div id="main-workspace">
-        <div class="card">
-            <h2>1. Source Ingestion Input Pipe</h2>
-            <span class="help-text">Register devices and overlay URLs into the studio catalog here first.</span>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <div>
-                    <label class="help-text" style="color: #94a3b8; font-weight: 600;">INGEST USB HARDWARE DEVICE</label>
-                    <input type="text" id="hwNameInput" placeholder="Asset Name (e.g. Main WebCam)...">
-                    <select id="hardwareScannerSelect"></select>
-                    <button onclick="addHardwareSourceLayer()">💾 Register Hardware Asset</button>
-                </div>
-                <div>
-                    <label class="help-text" style="color: #94a3b8; font-weight: 600;">INGEST BROWSER OVERLAY URL</label>
-                    <input type="text" id="webNameInput" placeholder="Asset Name (e.g. Chat Box Overlay)...">
-                    <input type="text" id="webUrlInput" placeholder="https://example.com">
-                    <button onclick="addBrowserSourceLayer()">🔌 Inject Web Asset</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>2. Layer Assignment Compositor</h2>
-            <span class="help-text">Select an asset from the vault, link it to the active scene, and blend its coordinate properties.</span>
-            
-            <div style="margin-bottom: 15px; display: flex; gap: 15px; align-items: center;">
-                <label style="font-size: 13px; font-weight: 600;">Target Editing Layer:</label>
-                <select id="editLayerSelect" style="width: 260px; margin-bottom: 0;" onchange="syncEditorSliders()"></select>
-                <label style="font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                    <input type="checkbox" id="layerSceneVisibility" onchange="toggleLayerSceneVisibility()"> Include in Active Scene
-                </label>
-            </div>
-
-            <div class="editor-row"><span>Top Pos:</span><input type="range" id="s-top" min="0" max="100" oninput="changeProperty('top', this.value)"><span id="v-top">0%</span></div>
-            <div class="editor-row"><span>Left Pos:</span><input type="range" id="s-left" min="0" max="100" oninput="changeProperty('left', this.value)"><span id="v-left">0%</span></div>
-            <div class="editor-row"><span>Width Space:</span><input type="range" id="s-width" min="1" max="100" oninput="changeProperty('width', this.value)"><span id="v-width">0%</span></div>
-            <div class="editor-row"><span>Height Space:</span><input type="range" id="s-height" min="1" max="100" oninput="changeProperty('height', this.value)"><span id="v-height">0%</span></div>
-            <div class="editor-row"><span>Track Opacity:</span><input type="range" id="s-opacity" min="0" max="100" oninput="changeProperty('opacity', this.value/100)"><span id="v-opacity">1.0</span></div>
-            <div class="editor-row"><span>Z-Index Layer:</span><input type="range" id="s-zIndex" min="1" max="10" oninput="changeProperty('zIndex', this.value)"><span id="v-zIndex">1</span></div>
-        </div>
-    </div>
     <script>
+        const WORKER_URL = "https://workers.dev";
         const controlChannel = new BroadcastChannel("stream_control");
         
-        // This is your master database state map. 
-        // It strictly splits ingest definitions out from layout scene parameters.
-        const globalProductionState = {
-            activeScene: "Scene 1",
-            
-            // The Asset Source Storage Bank
-            sources: {},
-            
-            // The Layout Repository Configuration Bank
-            scenes: {
-                "Scene 1": {}
-            }
-        };
+        let peerConnection = null;
+        let masterStream = null;
+        let activeHardwareVideoFeeds = {};
+        let currentProductionState = null;
 
-        // Instantly broadcasts the state object out into your browser memory tower
-        function dispatchState() {
-            controlChannel.postMessage({ 
-                command: "SYNC_PRODUCTION", 
-                value: globalProductionState 
-            });
-        }
-        function renderDashboardUI() {
-            // Render the Scene Switcher Bank triggers layout
-            const sceneBox = document.getElementById("scene-list-box");
-            sceneBox.innerHTML = "";
-            for (const sceneName of Object.keys(globalProductionState.scenes)) {
-                const btn = document.createElement("button");
-                btn.textContent = sceneName;
-                btn.className = sceneName === globalProductionState.activeScene ? "active" : "";
-                btn.onclick = () => {
-                    globalProductionState.activeScene = sceneName;
-                    renderDashboardUI();
-                    syncEditorSliders();
-                    dispatchState();
-                };
-                sceneBox.appendChild(btn);
-            }
-
-            // Render the Global Sources Vault storage catalog items list
-            const vaultBox = document.getElementById("sources-vault-box");
-            vaultBox.innerHTML = "";
-            const selectDropdown = document.getElementById("editLayerSelect");
-            const cachedValue = selectDropdown.value;
-            selectDropdown.innerHTML = "";
-
-            for (const [sourceId, sourceData] of Object.entries(globalProductionState.sources)) {
-                const item = document.createElement("div");
-                item.className = "list-item";
-                item.innerHTML = `<span>${sourceData.name}</span><button class="${sourceData.visible ? '' : 'danger'}" style="width:auto; margin-bottom:0;" onclick="toggleGlobalSource('${sourceId}')">${sourceData.visible ? 'Vault On' : 'Vault Off'}</button>`;
-                vaultBox.appendChild(item);
-
-                const option = document.createElement("option");
-                option.value = sourceId;
-                option.textContent = sourceData.name;
-                selectDropdown.appendChild(option);
-            }
-            selectDropdown.value = cachedValue || selectDropdown.options[0]?.value || "";
-        }
-
-        function toggleGlobalSource(sourceId) {
-            globalProductionState.sources[sourceId].visible = !globalProductionState.sources[sourceId].visible;
-            renderDashboardUI();
-            dispatchState();
-        }
-        function addHardwareSourceLayer() {
-            const name = document.getElementById("hwNameInput").value.trim();
-            const deviceId = document.getElementById("hardwareScannerSelect").value;
-            if (name && deviceId) {
-                const sourceId = "layer-" + Date.now();
-                // 1. Log asset details directly into your asset warehouse registry bank
-                globalProductionState.sources[sourceId] = { name: name, type: "hardware", deviceId: deviceId, visible: true };
-                // 2. Assign initial spatial transform dimensions to layout scene parameters
-                for (const sceneName of Object.keys(globalProductionState.scenes)) {
-                    globalProductionState.scenes[sceneName][sourceId] = { top: 0, left: 0, width: 100, height: 100, opacity: 1, zIndex: 1, visible: true };
-                }
-                document.getElementById("hwNameInput").value = "";
-                renderDashboardUI();
-                document.getElementById("editLayerSelect").value = sourceId;
-                syncEditorSliders();
-                dispatchState();
-            } else {
-                alert("Provide an asset name and confirm your computer hardware camera stream.");
-            }
-        }
-
-        function addBrowserSourceLayer() {
-            const name = document.getElementById("webNameInput").value.trim();
-            const url = document.getElementById("webUrlInput").value.trim();
-            if (name && url) {
-                const sourceId = "layer-" + Date.now();
-                // 1. Log asset details directly into your asset warehouse registry bank
-                globalProductionState.sources[sourceId] = { name: name, type: "browser", url: url, visible: true };
-                // 2. Assign initial spatial transform dimensions to layout scene parameters
-                for (const sceneName of Object.keys(globalProductionState.scenes)) {
-                    globalProductionState.scenes[sceneName][sourceId] = { top: 10, left: 10, width: 30, height: 40, opacity: 1, zIndex: 5, visible: true };
-                }
-                document.getElementById("webNameInput").value = "";
-                document.getElementById("webUrlInput").value = "";
-                renderDashboardUI();
-                document.getElementById("editLayerSelect").value = sourceId;
-                syncEditorSliders();
-                dispatchState();
-            } else {
-                alert("Provide an asset name label and a valid web link overlay URL.");
-            }
-        }
-
-        function createNewSceneProfile() {
-            const sceneName = document.getElementById("newSceneName").value.trim();
-            if (sceneName && !globalProductionState.scenes[sceneName]) {
-                globalProductionState.scenes[sceneName] = {};
-                // Inject the current warehouse catalog parameters over to this scene bank layout
-                for (const sourceId of Object.keys(globalProductionState.sources)) {
-                    globalProductionState.scenes[sceneName][sourceId] = { top: 10, left: 10, width: 30, height: 30, opacity: 1, zIndex: 2, visible: false };
-                }
-                globalProductionState.activeScene = sceneName;
-                document.getElementById("newSceneName").value = "";
-                renderDashboardUI();
-                syncEditorSliders();
-                dispatchState();
-            }
-        }
-
-        function syncEditorSliders() {
-            const activeScene = globalProductionState.activeScene;
-            const targetLayer = document.getElementById("editLayerSelect").value;
-            if(!targetLayer) return;
-            const properties = globalProductionState.scenes[activeScene][targetLayer] || { top: 0, left: 0, width: 100, height: 100, opacity: 1, zIndex: 1, visible: false };
-            
-            document.getElementById("layerSceneVisibility").checked = properties.visible;
-            document.getElementById("s-top").value = properties.top;
-            document.getElementById("v-top").textContent = properties.top + "%";
-            document.getElementById("s-left").value = properties.left;
-            document.getElementById("v-left").textContent = properties.left + "%";
-            document.getElementById("s-width").value = properties.width;
-            document.getElementById("v-width").textContent = properties.width + "%";
-            document.getElementById("s-height").value = properties.height;
-            document.getElementById("v-height").textContent = properties.height + "%";
-            document.getElementById("s-opacity").value = 100 * properties.opacity;
-            document.getElementById("v-opacity").textContent = properties.opacity;
-            document.getElementById("s-zIndex").value = properties.zIndex;
-            document.getElementById("v-zIndex").textContent = properties.zIndex;
-        }
-
-        function changeProperty(propertyKey, incomingValue) {
-            const activeScene = globalProductionState.activeScene;
-            const targetLayer = document.getElementById("editLayerSelect").value;
-            if(!targetLayer) return;
-            if (!globalProductionState.scenes[activeScene][targetLayer]) {
-                globalProductionState.scenes[activeScene][targetLayer] = {};
-            }
-            globalProductionState.scenes[activeScene][targetLayer][propertyKey] = parseFloat(incomingValue);
-            document.getElementById(`v-${propertyKey}`).textContent = propertyKey === "opacity" ? incomingValue : incomingValue + (propertyKey === "zIndex" ? "" : "%");
-            dispatchState();
-        }
-
-        function toggleLayerSceneVisibility() {
-            const activeScene = globalProductionState.activeScene;
-            const targetLayer = document.getElementById("editLayerSelect").value;
-            if(!targetLayer) return;
-            globalProductionState.scenes[activeScene][targetLayer].visible = document.getElementById("layerSceneVisibility").checked;
-            dispatchState();
-        }
-
-        function triggerDeployment() {
-            const btn = document.getElementById("liveBtn");
-            btn.disabled = true;
-            btn.textContent = "CONNECTING WHIP PIPELINE...";
-            controlChannel.postMessage({ command: "START_BROADCAST", value: true });
-        }
-
-        async function scanHardwareSystem() {
-            try {
-                await navigator.mediaDevices.getUserMedia({ video: true });
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const scannerSelect = document.getElementById("hardwareScannerSelect");
-                scannerSelect.innerHTML = "";
-                const videoDevices = devices.filter(d => "videoinput" === d.kind);
-                videoDevices.forEach((device, index) => {
-                    const opt = document.createElement("option");
-                    opt.value = device.deviceId;
-                    opt.text = device.label || `Camera/Capture Card ${index}`;
-                    scannerSelect.appendChild(opt);
-                });
-                renderDashboardUI();
-                syncEditorSliders();
-                dispatchState();
-            } catch (err) {
-                console.error(err);
-            }
-        }
-
-        controlChannel.onmessage = event => {
+        controlChannel.onmessage = async (event) => {
             const { command, value } = event.data;
-            if ("REQUEST_SYNC" === command) dispatchState();
-            if ("STATUS_UPDATE" === command) {
-                const btn = document.getElementById("liveBtn");
-                btn.textContent = "LIVE" === value ? "🔴 ONLINE" : "❌ ERROR";
-                if(value !== "LIVE") btn.disabled = false;
+            if (command === "SYNC_PRODUCTION") {
+                currentProductionState = value;
+                await processAndSyncLayoutElements(value);
+            }
+            if (command === "START_BROADCAST") {
+                goLiveViaWHIPPipeline();
             }
         };
-        window.addEventListener("DOMContentLoaded", scanHardwareSystem);
+        async function processAndSyncLayoutElements(state) {
+            const { activeScene, scenes, sources } = state;
+            const activeSceneMap = scenes[activeScene];
+            const viewportContainer = document.getElementById("master-stream-viewport");
+
+            if (!activeSceneMap) return;
+
+            // Step 1: Clean up and remove layout elements deleted from the vault repository
+            const stateSourceKeys = new Set(Object.keys(activeSceneMap));
+            for (const childNode of Array.from(viewportContainer.children)) {
+                const cleanId = childNode.id.replace("-element", "");
+                if (!stateSourceKeys.has(cleanId)) {
+                    childNode.remove();
+                }
+            }
+
+            // Step 2: Traverse state arrays to map layer properties frame by frame
+            for (const [sourceId, sceneProperties] of Object.entries(activeSceneMap)) {
+                const vaultConfiguration = sources[sourceId];
+                const isLayerVisibleInScene = sceneProperties.visible !== false;
+
+                if (vaultConfiguration && vaultConfiguration.visible && isLayerVisibleInScene) {
+                    let sourceElement = document.getElementById(sourceId + "-element");
+
+                    // Instantiate specific source containers on the canvas viewport dynamically
+                    if (!sourceElement) {
+                        if (vaultConfiguration.type === "hardware") {
+                            sourceElement = document.createElement("video");
+                            sourceElement.autoplay = true;
+                            sourceElement.playsInline = true;
+                            sourceElement.muted = true;
+                        } else if (vaultConfiguration.type === "browser") {
+                            sourceElement = document.createElement("iframe");
+                            sourceElement.allow = "autoplay; camera; microphone";
+                        }
+                        sourceElement.id = sourceId + "-element";
+                        sourceElement.className = "managed-source";
+                        viewportContainer.appendChild(sourceElement);
+                    }
+
+                    // Dynamically apply compositor slider transformations from dashboard state
+                    sourceElement.style.display = "block";
+                    sourceElement.style.top = sceneProperties.top + "%";
+                    sourceElement.style.left = sceneProperties.left + "%";
+                    sourceElement.style.width = sceneProperties.width + "%";
+                    sourceElement.style.height = sceneProperties.height + "%";
+                    sourceElement.style.opacity = sceneProperties.opacity;
+                    sourceElement.style.zIndex = sceneProperties.zIndex;
+
+                    // Execute media stream track mount matching instance variables
+                    if (vaultConfiguration.type === "hardware" && vaultConfiguration.deviceId) {
+                        if (activeHardwareVideoFeeds[sourceId] !== vaultConfiguration.deviceId) {
+                            await mountHardwareStreamTrack(sourceElement.id, vaultConfiguration.deviceId, sourceId);
+                        }
+                    } else if (vaultConfiguration.type === "browser" && vaultConfiguration.url) {
+                        if (sourceElement.src !== vaultConfiguration.url) {
+                            sourceElement.src = vaultConfiguration.url;
+                        }
+                    }
+                } else {
+                    const existingElement = document.getElementById(sourceId + "-element");
+                    if (existingElement) existingElement.style.display = "none";
+                }
+            }
+        }
+        async function mountHardwareStreamTrack(elementId, physicalDeviceId, layerKey) {
+            try {
+                // Shut down previous active tracks on this layer to prevent device locking bugs
+                if (window[layerKey + "_hardwareStream"]) {
+                    window[layerKey + "_hardwareStream"].getTracks().forEach(track => track.stop());
+                }
+
+                const newHardwareStream = await navigator.mediaDevices.getUserMedia({
+                    video: { deviceId: { exact: physicalDeviceId }, width: 1920, height: 1080 }
+                });
+
+                window[layerKey + "_hardwareStream"] = newHardwareStream;
+                const videoElement = document.getElementById(elementId);
+                if (videoElement) {
+                    videoElement.srcObject = newHardwareStream;
+                }
+                activeHardwareVideoFeeds[layerKey] = physicalDeviceId;
+
+            } catch (error) {
+                console.error("Hardware video source routing pipeline dropped:", error);
+            }
+        }
+        async function goLiveViaWHIPPipeline() {
+            try {
+                // Step 1: Initialize a high-fidelity 1080p background compositor canvas
+                const captureCanvas = document.createElement("canvas");
+                captureCanvas.width = 1920;
+                captureCanvas.height = 1080;
+                const cCtx = captureCanvas.getContext("2d");
+                const viewport = document.getElementById("master-stream-viewport");
+
+                // Step 2: Boot up the processing engine frames loop
+                function processViewportToBuffer() {
+                    if (!peerConnection || peerConnection.connectionState !== "closed") {
+                        requestAnimationFrame(processViewportToBuffer);
+                    }
+                    
+                    cCtx.fillStyle = "#000000";
+                    cCtx.fillRect(0, 0, captureCanvas.width, captureCanvas.height);
+
+                    // Sort elements dynamically by their current DOM Z-Index layers depth configuration
+                    const layers = Array.from(viewport.children).sort((a, b) => {
+                        return (parseInt(a.style.zIndex) || 0) - (parseInt(b.style.zIndex) || 0);
+                    });
+
+                    layers.forEach(element => {
+                        if (element.style.display === "none") return;
+
+                        // Parse the raw layout percentages out of the styled layout strings
+                        const topPct = parseFloat(element.style.top) || 0;
+                        const leftPct = parseFloat(element.style.left) || 0;
+                        const widthPct = parseFloat(element.style.width) || 0;
+                        const heightPct = parseFloat(element.style.height) || 0;
+                        const opacity = parseFloat(element.style.opacity) || 1;
+
+                        // Convert layout percentages safely into absolute 1080p pixel matrix dimensions
+                        const dx = (leftPct / 100) * captureCanvas.width;
+                        const dy = (topPct / 100) * captureCanvas.height;
+                        const dw = (widthPct / 100) * captureCanvas.width;
+                        const dh = (heightPct / 100) * captureCanvas.height;
+
+                        cCtx.save();
+                        cCtx.globalAlpha = opacity;
+
+                        // Case A: Render live Camera or Capture Card video streams
+                        if (element.tagName === "VIDEO" && element.readyState >= 2) {
+                            cCtx.drawImage(element, dx, dy, dw, dh);
+                        } 
+                        
+                        // Case B: Render secure web chats, alerts widgets, and browser overlays frames
+                        else if (element.tagName === "IFRAME") {
+                            cCtx.fillStyle = "rgba(168, 85, 247, 0.15)";
+                            cCtx.fillRect(dx, dy, dw, dh);
+                            cCtx.fillStyle = "#a855f7";
+                            cCtx.fillRect(dx, dy, dw, 4);
+                            cCtx.fillStyle = "#ffffff";
+                            cCtx.font = "bold 24px sans-serif";
+                            cCtx.fillText("🌐 Web Overlay Active", dx + 20, dy + 45);
+                        }
+                        cCtx.restore();
+                    });
+                }
+
+                // Initialize frame collection tracking loops
+                requestAnimationFrame(processViewportToBuffer);
+
+                // Step 3: Extract the combined layout stream into a clean 30fps track package
+                masterStream = captureCanvas.captureStream(30);
+                
+                peerConnection = new RTCPeerConnection({
+                    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+                });
+
+                masterStream.getVideoTracks().forEach(track => peerConnection.addTrack(track, masterStream));
+
+                // Step 4: Handle the serverless WebRTC media session offer handshake description
+                const sessionOffer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(sessionOffer);
+
+                const secureHandshakeResponse = await fetch(WORKER_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/sdp" },
+                    body: sessionOffer.sdp
+                });
+
+                if (!secureHandshakeResponse.ok) {
+                    throw new Error("Serverless proxy infrastructure rejected streaming parameters.");
+                }
+
+                const sdpVerificationAnswer = await secureHandshakeResponse.text();
+                
+                await peerConnection.setRemoteDescription(new RTCSessionDescription({
+                    type: "answer",
+                    sdp: sdpVerificationAnswer
+                }));
+
+                // Flash confirmation back up to your production dashboard console links
+                controlChannel.postMessage({ command: "STATUS_UPDATE", value: "LIVE" });
+                console.log("Composited viewport securely broadcast to endpoint targets!");
+
+            } catch (error) {
+                console.error("Transmission deployment handshake dropped:", error);
+                controlChannel.postMessage({ command: "STATUS_UPDATE", value: "ERROR" });
+            }
+        }
+
+        // Fire request sync to fill layout data if dashboard is already open
+        window.addEventListener("DOMContentLoaded", () => {
+            controlChannel.postMessage({ command: "REQUEST_SYNC", value: true });
+        });
     </script>
 </body>
 </html>
