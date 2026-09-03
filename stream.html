@@ -1,203 +1,89 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Stream Canvas Output Window</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body, html { width: 100%; height: 100%; background: #090d16; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-        
-        /* This is your master 16:9 1080p target streaming canvas window wrapper */
-        #master-stream-viewport {
-            width: 100vmin;
-            aspect-ratio: 16/9;
-            position: relative;
-            background: #000000;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.55);
-            overflow: hidden;
-        }
+        // The Engine Loop: Draws frames at 60fps, rendering web layers safely
+        function renderMasterProductionLoop() {
+            requestAnimationFrame(renderMasterProductionLoop);
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        /* All incoming layout tracks inherit this absolute layer position map */
-        .managed-source {
-            position: absolute;
-            transition: all 0.2s ease-out;
-            border: 0;
-            object-fit: cover;
-            display: none;
-        }
-    </style>
-</head>
-<body>
+            if (!productionState) return;
+            const activeScene = productionState.activeScene;
+            const sceneLayers = productionState.scenes[activeScene];
+            if (!sceneLayers) return;
 
-    <!-- Everything inside this wrapper gets composited, captured, and sent live -->
-    <div id="master-stream-viewport"></div>
+            const sortedLayers = Object.entries(sceneLayers).sort((a, b) => a[1].zIndex - b[1].zIndex);
 
-    <script>
-        const WORKER_URL = "https://workers.dev";
-        const controlChannel = new BroadcastChannel("stream_control");
-        
-        let peerConnection = null;
-        let masterStream = null;
-        let activeHardwareVideoFeeds = {};
-        let currentProductionState = null;
-
-        // Listen for instructions sent from your dashboard panel tab
-        controlChannel.onmessage = async (event) => {
-            const { command, value } = event.data;
-
-            if (command === "SYNC_PRODUCTION") {
-                currentProductionState = value;
-                await processAndSyncLayoutElements(value);
-            }
-
-            if (command === "START_BROADCAST") {
-                goLiveViaWHIPPipeline();
-            }
-        };
-
-        async function processAndSyncLayoutElements(state) {
-            const { activeScene, scenes, sources, hardwareConfig } = state;
-            const activeSceneMap = scenes[activeScene];
-            const viewportContainer = document.getElementById("master-stream-viewport");
-
-            if (!activeSceneMap) return;
-
-            // Step 1: Clean up and remove layers deleted from the dashboard vault
-            const stateSourceKeys = new Set(Object.keys(activeSceneMap));
-            for (const childNode of Array.from(viewportContainer.children)) {
-                const cleanId = childNode.id.replace("-element", "");
-                if (!stateSourceKeys.has(cleanId)) {
-                    childNode.remove();
-                }
-            }
-
-            // Step 2: Loop through scene tracking data and mount/position layout frames
-            for (const [sourceId, sceneProperties] of Object.entries(activeSceneMap)) {
-                const vaultConfiguration = sources[sourceId];
-
-                if (vaultConfiguration && vaultConfiguration.visible && sceneProperties.visible) {
-                    let sourceElement = document.getElementById(sourceId + "-element");
-
-                    // If the element doesn't exist on the stream screen canvas yet, build it
-                    if (!sourceElement) {
-                        if (vaultConfiguration.type === "hardware") {
-                            sourceElement = document.createElement("video");
-                            sourceElement.autoplay = true;
-                            sourceElement.playsInline = true;
-                            sourceElement.muted = true;
-                        } else if (vaultConfiguration.type === "browser") {
-                            sourceElement = document.createElement("iframe");
-                            sourceElement.allow = "autoplay; camera; microphone";
-                        }
-                        sourceElement.id = sourceId + "-element";
-                        sourceElement.className = "managed-source";
-                        viewportContainer.appendChild(sourceElement);
-                    }
-
-                    // Apply coordinate slider matrix updates in real time
-                    sourceElement.style.display = "block";
-                    sourceElement.style.top = sceneProperties.top + "%";
-                    sourceElement.style.left = sceneProperties.left + "%";
-                    sourceElement.style.width = sceneProperties.width + "%";
-                    sourceElement.style.height = sceneProperties.height + "%";
-                    sourceElement.style.opacity = sceneProperties.opacity;
-                    sourceElement.style.zIndex = sceneProperties.zIndex;
-
-                    // Route local camera frames or screen targets dynamically
-                    if (vaultConfiguration.type === "hardware" && hardwareConfig.selectedHardware) {
-                        if (activeHardwareVideoFeeds[sourceId] !== hardwareConfig.selectedHardware) {
-                            await mountHardwareStreamTrack(sourceElement.id, hardwareConfig.selectedHardware, sourceId);
-                        }
-                    } 
+            for (const [sourceId, transform] of sortedLayers) {
+                const sourceMeta = productionState.sources[sourceId];
+                if (sourceMeta && sourceMeta.visible && transform.visible) {
                     
-                    // Route external chat paths, goal bars, or alert boxes dynamically
-                    else if (vaultConfiguration.type === "browser" && vaultConfiguration.url) {
-                        if (sourceElement.src !== vaultConfiguration.url) {
-                            sourceElement.src = vaultConfiguration.url;
+                    // Render Camera/Capture Card streams
+                    if (sourceMeta.type === "hardware") {
+                        const videoEl = document.getElementById(sourceId + "_video");
+                        if (videoEl && videoEl.readyState >= 2) {
+                            ctx.save();
+                            ctx.globalAlpha = transform.opacity;
+                            ctx.drawImage(videoEl, transform.left * 19.2, transform.top * 10.8, transform.width * 19.2, transform.height * 10.8);
+                            ctx.restore();
                         }
                     }
-
-                } else {
-                    // Hide the element instantly if toggled off inside the global settings
-                    const existingElement = document.getElementById(sourceId + "-element");
-                    if (existingElement) {
-                        existingElement.style.display = "none";
+                    
+                    // Render Web overlays, text elements, goal boxes, and chat boxes safely 
+                    if (sourceMeta.type === "browser") {
+                        ctx.save();
+                        ctx.globalAlpha = transform.opacity;
+                        ctx.fillStyle = "rgba(168, 85, 247, 0.15)";
+                        ctx.fillRect(transform.left * 19.2, transform.top * 10.8, transform.width * 19.2, transform.height * 10.8);
+                        ctx.fillStyle = "#a855f7";
+                        ctx.fillRect(transform.left * 19.2, transform.top * 10.8, transform.width * 19.2, 4);
+                        ctx.fillStyle = "#ffffff";
+                        ctx.font = "bold 20px 'Segoe UI', sans-serif";
+                        ctx.fillText(`🌐 ${sourceMeta.name}`, transform.left * 19.2 + 15, transform.top * 10.8 + 35);
+                        ctx.font = "14px monospace";
+                        ctx.fillStyle = "#94a3b8";
+                        ctx.fillText(sourceMeta.url.slice(0, 30) + "...", transform.left * 19.2 + 15, transform.top * 10.8 + 65);
+                        ctx.restore();
                     }
                 }
             }
         }
 
-        async function mountHardwareStreamTrack(elementId, physicalDeviceId, layerKey) {
+        async function goLiveViaWHIP() {
             try {
-                // Shut down previous active tracks to prevent device lock errors
-                if (window[layerKey + "_hardwareStream"]) {
-                    window[layerKey + "_hardwareStream"].getTracks().forEach(track => track.stop());
-                }
-
-                const newHardwareStream = await navigator.mediaDevices.getUserMedia({
-                    video: { deviceId: { exact: physicalDeviceId }, width: 1920, height: 1080 }
-                });
-
-                window[layerKey + "_hardwareStream"] = newHardwareStream;
-                document.getElementById(elementId).srcObject = newHardwareStream;
-                activeHardwareVideoFeeds[layerKey] = physicalDeviceId;
-
-            } catch (error) {
-                console.error("Hardware video source routing pipeline dropped:", error);
-            }
-        }
-
-        async function goLiveViaWHIPPipeline() {
-            try {
-                const viewport = document.getElementById("master-stream-viewport");
+                // Capture the 1080p canvas composite as a single, compressed live video feed
+                masterStream = canvas.captureStream(30);
                 
-                // Chrome and Firefox allow capturing an active DOM wrapper node layout structure
-                // using a HTML canvas stream fallback mix or pulling directly from mixed media tracks
-                masterStream = new MediaStream();
-
-                // Collect webcam video layers and combine them directly into the broadcast pipeline
-                for (const child of viewport.children) {
-                    if (child.tagName === "VIDEO" && child.srcObject) {
-                        child.srcObject.getVideoTracks().forEach(track => masterStream.addTrack(track));
-                    }
-                }
-
                 peerConnection = new RTCPeerConnection({
                     iceServers: [{ urls: "stun:://google.com" }]
                 });
 
-                masterStream.getTracks().forEach(track => peerConnection.addTrack(track, masterStream));
+                masterStream.getVideoTracks().forEach(track => peerConnection.addTrack(track, masterStream));
 
-                const connectionOffer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(connectionOffer);
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
 
-                const serverResponse = await fetch(WORKER_URL, {
+                // Pipe connection description to your Cloudflare Worker Proxy
+                const response = await fetch(WORKER_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/sdp" },
-                    body: connectionOffer.sdp
+                    body: offer.sdp
                 });
 
-                if (!serverResponse.ok) throw new Error("Cloudflare worker proxy rejected session offer.");
-
-                const verificationSdpAnswer = await serverResponse.text();
+                if (!response.ok) throw new Error("Worker endpoint rejected video handshake.");
+                const sdpAnswer = await response.text();
+                
                 await peerConnection.setRemoteDescription(new RTCSessionDescription({
                     type: "answer",
-                    sdp: verificationSdpAnswer
+                    sdp: sdpAnswer
                 }));
 
                 controlChannel.postMessage({ command: "STATUS_UPDATE", value: "LIVE" });
-                console.log("Transmission successfully sent live to serverless cloud infrastructure!");
-
-            } catch (error) {
-                console.error("Live streaming deployment failed:", error);
+            } catch (err) {
+                console.error(err);
                 controlChannel.postMessage({ command: "STATUS_UPDATE", value: "ERROR" });
             }
         }
 
-        // Tell the dashboard the screen window has booted up and needs an immediate sync push
-        window.addEventListener("DOMContentLoaded", () => {
-            controlChannel.postMessage({ command: "REQUEST_SYNC", value: true });
-        });
+        renderMasterProductionLoop();
+        controlChannel.postMessage({ command: "REQUEST_SYNC", value: true });
     </script>
 </body>
 </html>
