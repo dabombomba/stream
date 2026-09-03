@@ -1,3 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Master Switcher Production Deck</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; display: grid; grid-template-columns: 340px 1fr; gap: 20px; height: 100vh; overflow: hidden; }
+        h1, h2 { text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+        h1 { font-size: 18px; color: #94a3b8; grid-column: span 2; border-bottom: 2px solid #1e293b; padding-bottom: 10px; height: fit-content; }
+        #left-rail { display: flex; flex-direction: column; gap: 15px; height: calc(100vh - 60px); overflow-y: auto; }
+        #main-workspace { display: flex; flex-direction: column; gap: 15px; height: calc(100vh - 60px); overflow-y: auto; padding-right: 5px; }
+        .card { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
+        h2 { font-size: 12px; color: #a855f7; border-bottom: 1px solid #334155; padding-bottom: 6px; margin-bottom: 12px; }
+        button { background: #3b82f6; color: #fff; border: none; padding: 10px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: all .2s ease; width: 100%; }
+        button:hover { background: #2563eb; transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        button.active { background: #a855f7; box-shadow: 0 0 12px rgba(168, 85, 247, 0.4); }
+        button.danger { background: #ef4444; }
+        button.danger:hover { background: #dc2626; }
+        button.success { background: #22c55e; padding: 14px; font-size: 13px; }
+        button.success:hover { background: #16a34a; box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); }
+        .list-item { display: flex; align-items: center; justify-content: space-between; background: #131b2e; padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; border: 1px solid #1e293b; }
+        .editor-row { display: grid; grid-template-columns: 90px 1fr 50px; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 12px; font-family: monospace; }
+        input[type=range] { width: 100%; accent-color: #a855f7; cursor: pointer; }
+        input[type=text], select { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 13px; margin-bottom: 10px; outline: none; }
+        input[type=text]:focus, select:focus { border-color: #3b82f6; }
+        .flex-row { display: flex; gap: 8px; }
+        .help-text { font-size: 12px; color: #64748b; margin-top: -5px; margin-bottom: 10px; display: block; }
+    </style>
+</head>
+<body>
+
+    <h1>🎬 Switcher Production Deck</h1>
+    <div id="left-rail">
+        <div class="card" style="border-color: #22c55e;">
+            <h2>Transmission Pipeline</h2>
+            <button id="liveBtn" class="success" onclick="triggerDeployment()">🚀 DEPLOY LIVE BROADCAST</button>
+        </div>
+
+        <div class="card">
+            <h2>Scene Switcher Bank</h2>
+            <div id="scene-list-box"></div>
+            <div style="margin-top: 12px;">
+                <input type="text" id="newSceneName" placeholder="New Scene Name...">
+                <button onclick="createNewSceneProfile()">➕ Create Scene</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Global Sources Vault</h2>
+            <div id="sources-vault-box"></div>
+        </div>
+    </div>
+
+    <div id="main-workspace">
+        <div class="card">
+            <h2>1. Source Ingestion Input Pipe</h2>
+            <span class="help-text">Register devices and overlay URLs into the studio catalog here first.</span>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div>
+                    <label class="help-text" style="color: #94a3b8; font-weight: 600;">INGEST USB HARDWARE DEVICE</label>
+                    <input type="text" id="hwNameInput" placeholder="Asset Name (e.g. Main WebCam)...">
+                    <select id="hardwareScannerSelect"></select>
+                    <button onclick="addHardwareSourceLayer()">💾 Register Hardware Asset</button>
+                </div>
+                <div>
+                    <label class="help-text" style="color: #94a3b8; font-weight: 600;">INGEST BROWSER OVERLAY URL</label>
+                    <input type="text" id="webNameInput" placeholder="Asset Name (e.g. Chat Box Overlay)...">
+                    <input type="text" id="webUrlInput" placeholder="https://example.com">
+                    <button onclick="addBrowserSourceLayer()">🔌 Inject Web Asset</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>2. Layer Assignment Compositor</h2>
+            <span class="help-text">Select an asset from the vault, link it to the active scene, and blend its coordinate properties.</span>
+            
+            <div style="margin-bottom: 15px; display: flex; gap: 15px; align-items: center;">
+                <label style="font-size: 13px; font-weight: 600;">Target Editing Layer:</label>
+                <select id="editLayerSelect" style="width: 260px; margin-bottom: 0;" onchange="syncEditorSliders()"></select>
+                <label style="font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    <input type="checkbox" id="layerSceneVisibility" onchange="toggleLayerSceneVisibility()"> Include in Active Scene
+                </label>
+            </div>
+
+            <div class="editor-row"><span>Top Pos:</span><input type="range" id="s-top" min="0" max="100" oninput="changeProperty('top', this.value)"><span id="v-top">0%</span></div>
+            <div class="editor-row"><span>Left Pos:</span><input type="range" id="s-left" min="0" max="100" oninput="changeProperty('left', this.value)"><span id="v-left">0%</span></div>
+            <div class="editor-row"><span>Width Space:</span><input type="range" id="s-width" min="1" max="100" oninput="changeProperty('width', this.value)"><span id="v-width">0%</span></div>
+            <div class="editor-row"><span>Height Space:</span><input type="range" id="s-height" min="1" max="100" oninput="changeProperty('height', this.value)"><span id="v-height">0%</span></div>
+            <div class="editor-row"><span>Track Opacity:</span><input type="range" id="s-opacity" min="0" max="100" oninput="changeProperty('opacity', this.value/100)"><span id="v-opacity">1.0</span></div>
+            <div class="editor-row"><span>Z-Index Layer:</span><input type="range" id="s-zIndex" min="1" max="10" oninput="changeProperty('zIndex', this.value)"><span id="v-zIndex">1</span></div>
+        </div>
+    </div>
+    <script>
+        const controlChannel = new BroadcastChannel("stream_control");
+        
+        // This is your master database state map. 
+        // It strictly splits ingest definitions out from layout scene parameters.
+        const globalProductionState = {
+            activeScene: "Scene 1",
+            
+            // The Asset Source Storage Bank
+            sources: {},
+            
+            // The Layout Repository Configuration Bank
+            scenes: {
+                "Scene 1": {}
+            }
+        };
+
+        // Instantly broadcasts the state object out into your browser memory tower
+        function dispatchState() {
+            controlChannel.postMessage({ 
+                command: "SYNC_PRODUCTION", 
+                value: globalProductionState 
+            });
+        }
+        function renderDashboardUI() {
+            // Render the Scene Switcher Bank triggers layout
+            const sceneBox = document.getElementById("scene-list-box");
+            sceneBox.innerHTML = "";
+            for (const sceneName of Object.keys(globalProductionState.scenes)) {
+                const btn = document.createElement("button");
+                btn.textContent = sceneName;
+                btn.className = sceneName === globalProductionState.activeScene ? "active" : "";
+                btn.onclick = () => {
+                    globalProductionState.activeScene = sceneName;
+                    renderDashboardUI();
+                    syncEditorSliders();
+                    dispatchState();
+                };
+                sceneBox.appendChild(btn);
+            }
+
+            // Render the Global Sources Vault storage catalog items list
+            const vaultBox = document.getElementById("sources-vault-box");
+            vaultBox.innerHTML = "";
+            const selectDropdown = document.getElementById("editLayerSelect");
+            const cachedValue = selectDropdown.value;
+            selectDropdown.innerHTML = "";
+
+            for (const [sourceId, sourceData] of Object.entries(globalProductionState.sources)) {
+                const item = document.createElement("div");
+                item.className = "list-item";
+                item.innerHTML = `<span>${sourceData.name}</span><button class="${sourceData.visible ? '' : 'danger'}" style="width:auto; margin-bottom:0;" onclick="toggleGlobalSource('${sourceId}')">${sourceData.visible ? 'Vault On' : 'Vault Off'}</button>`;
+                vaultBox.appendChild(item);
+
+                const option = document.createElement("option");
+                option.value = sourceId;
+                option.textContent = sourceData.name;
+                selectDropdown.appendChild(option);
+            }
+            selectDropdown.value = cachedValue || selectDropdown.options[0]?.value || "";
+        }
+
+        function toggleGlobalSource(sourceId) {
+            globalProductionState.sources[sourceId].visible = !globalProductionState.sources[sourceId].visible;
+            renderDashboardUI();
+            dispatchState();
+        }
         function addHardwareSourceLayer() {
             const name = document.getElementById("hwNameInput").value.trim();
             const deviceId = document.getElementById("hardwareScannerSelect").value;
