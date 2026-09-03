@@ -18,7 +18,7 @@
             background: #000; 
             overflow: hidden; 
         }
-        #bg-gif-layer { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; }
+        #bg-gif-layer { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; opacity:0.01}
         
         /* FIX: Injected layers are automatically centered, borderless, and locked to full-screen 1080p bounds */
         .overlay-frame { 
@@ -49,7 +49,8 @@
 <body>
     <div id="control-panel">
         <h2>1. Base Background Ingestion</h2>
-        <input type="text" id="gifUrlInput" placeholder="Paste Background GIF URL..." onchange="updateBackgroundGif(this.value)">
+        <!-- Hardcoded text value inside the input box baseline -->
+        <input type="text" id="gifUrlInput" placeholder="Paste Background GIF URL..." value="https://github.io" onchange="updateBackgroundGif(this.value)">
         <audio id="bg-music-player" src="https://dabombomba.github.io/stream/music.wav" controls loop></audio>
 
         <h2>2. Web Overlay Injection (16:9 Fullscreen)</h2>
@@ -67,21 +68,47 @@
 
     <div id="live-viewport-container">
         <div id="master-stream-viewport">
+            <!-- Hardcoded true default source target path background layer link -->
             <img id="bg-gif-layer" src="https://dabombomba.github.io/stream/image.GIF" alt="Background Loop">
         </div>
     </div>
-    <script>
-        // Replace with your live deployed Cloudflare Worker URL route
+        <script>
+        // 1. YOUR IMMUTABLE CONFIGURATION PATHS
         const WORKER_URL = "https://omm.jacksonhazlett.workers.dev/";
         
-        // This is your active production inventory registry bank
-        let stackedOverlaysRegistry = [];
+        // Hardcodes your active production asset warehouse records directly into boot memory
+        let stackedOverlaysRegistry = [
+            { id: "layer-logo", name: "OMM Logo PNG", url: "dabombomba.github.io/stream/OMM.png" },
+            { id: "layer-chat", name: "Live Chat Box HTML", url: "dabombomba.github.io/stream/chat.html" }
+        ];
 
         function updateBackgroundGif(url) {
             if(url) document.getElementById("bg-gif-layer").src = url;
         }
 
-                function injectFullscreenWebOverlay() {
+        // 2. AUTOMATED FULL-SCREEN INJECTION PIPELINE
+        function createDOMSourceNode(uniqueLayerId, url) {
+            const viewport = document.getElementById("master-stream-viewport");
+            const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg)/i.test(url);
+            let targetSourceElement;
+
+            if (isImageFile) {
+                // Instantiates a native picture node to lock in alpha transparency parameters cleanly
+                targetSourceElement = document.createElement("img");
+                targetSourceElement.src = url;
+            } else {
+                // Instantiates an interactive web channel layer for scrolling live text widgets
+                targetSourceElement = document.createElement("iframe");
+                targetSourceElement.src = url;
+                targetSourceElement.allow = "autoplay";
+            }
+
+            targetSourceElement.id = uniqueLayerId;
+            targetSourceElement.className = "overlay-frame";
+            viewport.appendChild(targetSourceElement);
+        }
+
+        function injectFullscreenWebOverlay() {
             const nameInput = document.getElementById("overlayNameInput");
             const urlInput = document.getElementById("overlayUrlInput");
             const name = nameInput.value.trim() || `Overlay Track ${stackedOverlaysRegistry.length + 1}`;
@@ -93,47 +120,39 @@
             }
 
             const uniqueLayerId = "layer-" + Date.now();
-            const viewport = document.getElementById("master-stream-viewport");
-
-            // FIX: Smart element router detects if the incoming link is a web overlay or a transparent PNG/GIF graphic
-            const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg)/i.test(url);
-            let targetSourceElement;
-
-            if (isImageFile) {
-                // Instantiate a native picture container to preserve alpha transparency channels perfectly
-                targetSourceElement = document.createElement("img");
-                targetSourceElement.src = url;
-            } else {
-                // Keep the standard web portal block for functional chat and widgets layers
-                targetSourceElement = document.createElement("iframe");
-                targetSourceElement.src = url;
-                targetSourceElement.allow = "autoplay";
-            }
-
-            targetSourceElement.id = uniqueLayerId;
-            targetSourceElement.className = "overlay-frame";
-            viewport.appendChild(targetSourceElement);
-
-            // Log metadata directly into your storage registry bank array
+            
+            createDOMSourceNode(uniqueLayerId, url);
             stackedOverlaysRegistry.push({ id: uniqueLayerId, name: name, url: url });
 
-            // Reset input fields and sync layout dashboard listing boxes
             nameInput.value = "";
             urlInput.value = "";
             renderActiveLayersBankUI();
         }
 
-
         function removeStackedLayer(layerId) {
-            // 1. Wipe the physical element block straight off your screen viewport monitor
             const element = document.getElementById(layerId);
             if (element) element.remove();
-
-            // 2. Expel the record from your internal repository memory block
             stackedOverlaysRegistry = stackedOverlaysRegistry.filter(layer => layer.id !== layerId);
-
-            // 3. Update active production status elements labels
             renderActiveLayersBankUI();
+        }
+
+                // FIX: Manual soft-refresh button pipeline resets the source asset target without dropping canvas frames
+        function refreshSingleLayer(layerId) {
+            const targetElement = document.getElementById(layerId);
+            if (!targetElement) return;
+
+            console.log(`Manually refreshing target production layer ID: ${layerId}`);
+
+            if (targetElement.tagName === "IFRAME") {
+                // Soft-reload the iframe source pointer seamlessly
+                const currentSourceUrl = targetElement.src;
+                targetElement.src = "";
+                targetElement.src = currentSourceUrl;
+            } else if (targetElement.tagName === "IMG") {
+                // Bust the browser image cache by appending a micro timestamp query parameter
+                const baseSrc = targetElement.src.split('?')[0];
+                targetElement.src = baseSrc + "?t=" + Date.now();
+            }
         }
 
         function renderActiveLayersBankUI() {
@@ -145,47 +164,59 @@
                 return;
             }
 
-            // Loop through entries to paint your active layer status nodes list
+            // Loop through entries to paint your active layer status nodes list with control buttons
             stackedOverlaysRegistry.forEach((layer, index) => {
                 const row = document.createElement("div");
                 row.className = "layer-item";
+                
+                // FIX: Injects an individual manual 🔄 Refresh button alongside your layer tracking rows
                 row.innerHTML = `
-                    <span class="layer-name">#${index + 1} [${layer.name}]</span>
-                    <button class="danger-btn" onclick="removeStackedLayer('${layer.id}')">🗑️ Remove</button>
+                    <span class="layer-name" style="max-width: 140px;">#${index + 1} [${layer.name}]</span>
+                    <div style="display: flex; gap: 5px;">
+                        <button onclick="refreshSingleLayer('${layer.id}')" style="background: #1e293b; border: 1px solid #475569; padding: 4px 8px; font-size: 11px; width: auto; margin-bottom: 0;">🔄 Refresh</button>
+                        <button class="danger-btn" onclick="removeStackedLayer('${layer.id}')">🗑️ Remove</button>
+                    </div>
                 `;
                 bankContainer.appendChild(row);
             });
         }
+
+        // 3. SYSTEM AUTOMATION STARTUP TRIGGERS
+        function initializeHardcodedProductionSuite() {
+            stackedOverlaysRegistry.forEach(layer => {
+                createDOMSourceNode(layer.id, layer.url);
+            });
+            renderActiveLayersBankUI();
+        }
+
+        // Hooks your hardcoded array straight into the initial page load cycle sequence
+        window.addEventListener("DOMContentLoaded", initializeHardcodedProductionSuite);
+
+
+        // 4. HIGH-PERFORMANCE TRANSMISSION MEDIA PIPELINE (Left Unchanged)
         async function startWhipStreaming() {
             const btn = document.getElementById("liveBtn");
             btn.disabled = true;
             btn.textContent = "TRANSMITTING TO WORKER...";
             try {
                 const viewport = document.getElementById("master-stream-viewport");
-                
-                // Initialize a high-fidelity 1080p background stream composition canvas
                 const captureCanvas = document.createElement("canvas");
                 captureCanvas.width = 1920;
                 captureCanvas.height = 1080;
                 const ctx = captureCanvas.getContext("2d");
                 const gifElement = document.getElementById("bg-gif-layer");
 
-                // Flatten and redraw layers frame-by-frame for the WebRTC outgoing pipe
                 function compositeBufferLoop() {
                     if (btn.textContent === "🔴 STREAM ONLINE" || btn.textContent === "TRANSMITTING TO WORKER...") {
                         requestAnimationFrame(compositeBufferLoop);
                     }
-                    
                     try {
                         ctx.drawImage(gifElement, 0, 0, 1920, 1080);
                     } catch(e) {}
                     
-                    // Traverse your active array to generate metadata box traces for the worker stream
                     stackedOverlaysRegistry.forEach((layer) => {
                         const iframeElement = document.getElementById(layer.id);
                         if (iframeElement && iframeElement.style.display !== "none") {
-                            // Canvas rendering boundaries cannot slice into raw cross-origin frames text rows, 
-                            // so a high-performance vector banner represents the asset tracks cleanly.
                             ctx.save();
                             ctx.fillStyle = "rgba(168, 85, 247, 0.05)";
                             ctx.fillRect(0, 0, 1920, 1080);
@@ -198,25 +229,21 @@
                 }
                 compositeBufferLoop();
 
-                // 1. Capture the 1080p Canvas Video Track
                 const videoStream = captureCanvas.captureStream(30); 
                 const videoTrack = videoStream.getVideoTracks();
 
-                // 2. Capture Background Ingestion Audio Track
                 const audioElement = document.getElementById("bg-music-player");
                 const audioStream = audioElement.captureStream ? audioElement.captureStream() : audioElement.mozCaptureStream();
                 const audioTrack = audioStream.getAudioTracks();
 
-                // 3. Bundle Tracks into a single MediaStream Output Box
                 const outboundStream = new MediaStream();
                 outboundStream.addTrack(videoTrack[0]);
                 if (audioTrack && audioTrack.length > 0) {
                     outboundStream.addTrack(audioTrack[0]);
                 }
 
-                // 4. Mount a secure WebRTC connection layer over to a valid public STUN target
                 const pc = new RTCPeerConnection({
-                    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+                    iceServers: [{ urls: "stun:://google.com" }]
                 });
 
                 outboundStream.getTracks().forEach(track => pc.addTrack(track, outboundStream));
@@ -224,7 +251,6 @@
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
-                // 5. Fire your stream data straight down to your secure Cloudflare Worker proxy route
                 const res = await fetch(WORKER_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/sdp" },
