@@ -30,6 +30,7 @@
 <body>
     <!-- The exact video layout container box that gets composited and broadcast live -->
     <div id="master-stream-viewport"></div>
+
     <script>
         const WORKER_URL = "https://workers.dev";
         const controlChannel = new BroadcastChannel("stream_control");
@@ -56,7 +57,7 @@
 
             if (!activeSceneMap) return;
 
-            // Remove layers deleted from the dashboard vault
+            // Step 1: Clean up and remove layout elements deleted from the vault repository
             const stateSourceKeys = new Set(Object.keys(activeSceneMap));
             for (const childNode of Array.from(viewportContainer.children)) {
                 const cleanId = childNode.id.replace("-element", "");
@@ -64,16 +65,16 @@
                     childNode.remove();
                 }
             }
-            // Loop through scene data to mount and position frames dynamically
+
+            // Step 2: Traverse state arrays to map layer properties frame by frame
             for (const [sourceId, sceneProperties] of Object.entries(activeSceneMap)) {
                 const vaultConfiguration = sources[sourceId];
-                
-                // Fallback check to prevent undefined visibility fields from blocking rendering
                 const isLayerVisibleInScene = sceneProperties.visible !== false;
 
                 if (vaultConfiguration && vaultConfiguration.visible && isLayerVisibleInScene) {
                     let sourceElement = document.getElementById(sourceId + "-element");
 
+                    // Instantiate specific source containers on the canvas viewport dynamically
                     if (!sourceElement) {
                         if (vaultConfiguration.type === "hardware") {
                             sourceElement = document.createElement("video");
@@ -88,7 +89,8 @@
                         sourceElement.className = "managed-source";
                         viewportContainer.appendChild(sourceElement);
                     }
-                    // Apply coordinates from dashboard sliders
+
+                    // Dynamically apply compositor slider transformations from dashboard state
                     sourceElement.style.display = "block";
                     sourceElement.style.top = sceneProperties.top + "%";
                     sourceElement.style.left = sceneProperties.left + "%";
@@ -97,7 +99,7 @@
                     sourceElement.style.opacity = sceneProperties.opacity;
                     sourceElement.style.zIndex = sceneProperties.zIndex;
 
-                    // Fix: Check specific instance deviceId instead of global selectedHardware string
+                    // Execute media stream track mount matching instance variables
                     if (vaultConfiguration.type === "hardware" && vaultConfiguration.deviceId) {
                         if (activeHardwareVideoFeeds[sourceId] !== vaultConfiguration.deviceId) {
                             await mountHardwareStreamTrack(sourceElement.id, vaultConfiguration.deviceId, sourceId);
@@ -135,25 +137,22 @@
                 console.error("Hardware video source routing pipeline dropped:", error);
             }
         }
-        async function goLiveViaWHIPPipeline() {
+                async function goLiveViaWHIPPipeline() {
             try {
-                // Step 1: Initialize a high-fidelity 1080p background compositor canvas
                 const captureCanvas = document.createElement("canvas");
                 captureCanvas.width = 1920;
                 captureCanvas.height = 1080;
                 const cCtx = captureCanvas.getContext("2d");
                 const viewport = document.getElementById("master-stream-viewport");
 
-                // Step 2: Boot up the processing engine frames loop
                 function processViewportToBuffer() {
-                    // Fix: Ensure the loop keeps running if peerConnection isn't closed or hasn't started yet
                     if (!peerConnection || peerConnection.connectionState !== "closed") {
                         requestAnimationFrame(processViewportToBuffer);
                     }
                     
                     cCtx.fillStyle = "#000000";
                     cCtx.fillRect(0, 0, captureCanvas.width, captureCanvas.height);
-                    // Sort elements dynamically by their current DOM Z-Index layers depth configuration
+
                     const layers = Array.from(viewport.children).sort((a, b) => {
                         return (parseInt(a.style.zIndex) || 0) - (parseInt(b.style.zIndex) || 0);
                     });
@@ -161,14 +160,12 @@
                     layers.forEach(element => {
                         if (element.style.display === "none") return;
 
-                        // Parse the raw layout percentages out of the styled layout strings
                         const topPct = parseFloat(element.style.top) || 0;
                         const leftPct = parseFloat(element.style.left) || 0;
                         const widthPct = parseFloat(element.style.width) || 0;
                         const heightPct = parseFloat(element.style.height) || 0;
                         const opacity = parseFloat(element.style.opacity) || 1;
 
-                        // Convert layout percentages safely into absolute 1080p pixel matrix dimensions
                         const dx = (leftPct / 100) * captureCanvas.width;
                         const dy = (topPct / 100) * captureCanvas.height;
                         const dw = (widthPct / 100) * captureCanvas.width;
@@ -177,38 +174,41 @@
                         cCtx.save();
                         cCtx.globalAlpha = opacity;
 
-                        // Case A: Render live Camera or Capture Card video streams
                         if (element.tagName === "VIDEO" && element.readyState >= 2) {
                             cCtx.drawImage(element, dx, dy, dw, dh);
                         } 
                         
-                        // Case B: Render secure web chats, alerts widgets, and browser overlays frames
+                        // FIX: Safely render a crisp text-box placeholder for chat overlays
+                        // This prevents the browser from tainting the canvas and crashing your stream!
                         else if (element.tagName === "IFRAME") {
-                            cCtx.fillStyle = "rgba(168, 85, 247, 0.15)";
+                            cCtx.fillStyle = "rgba(15, 23, 42, 0.85)"; 
                             cCtx.fillRect(dx, dy, dw, dh);
-                            cCtx.fillStyle = "#a855f7";
-                            cCtx.fillRect(dx, dy, dw, 4);
+                            cCtx.strokeStyle = "#a855f7";
+                            cCtx.lineWidth = 4;
+                            cCtx.strokeRect(dx, dy, dw, dh);
+                            
                             cCtx.fillStyle = "#ffffff";
-                            cCtx.font = "bold 24px sans-serif";
-                            cCtx.fillText("🌐 Web Overlay Active", dx + 20, dy + 45);
+                            cCtx.font = "bold 28px 'Segoe UI', sans-serif";
+                            cCtx.fillText("💬 " + element.id.replace("-element", "").toUpperCase(), dx + 25, dy + 55);
+                            
+                            cCtx.fillStyle = "#a855f7";
+                            cCtx.font = "18px monospace";
+                            cCtx.fillText("🔒 Live Ingestion Stream Active", dx + 25, dy + 95);
                         }
                         cCtx.restore();
                     });
                 }
-                // Initialize frame collection tracking loops
+
                 requestAnimationFrame(processViewportToBuffer);
 
-                // Step 3: Extract the combined layout stream into a clean 30fps track package
                 masterStream = captureCanvas.captureStream(30);
                 
-                // Fix: Corrected structural STUN link format address rules string
                 peerConnection = new RTCPeerConnection({
-                    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+                    iceServers: [{ urls: "stun:://google.com" }]
                 });
 
                 masterStream.getVideoTracks().forEach(track => peerConnection.addTrack(track, masterStream));
 
-                // Step 4: Handle the serverless WebRTC media session offer handshake description
                 const sessionOffer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(sessionOffer);
 
@@ -221,6 +221,7 @@
                 if (!secureHandshakeResponse.ok) {
                     throw new Error("Serverless proxy infrastructure rejected streaming parameters.");
                 }
+
                 const sdpVerificationAnswer = await secureHandshakeResponse.text();
                 
                 await peerConnection.setRemoteDescription(new RTCSessionDescription({
@@ -228,7 +229,6 @@
                     sdp: sdpVerificationAnswer
                 }));
 
-                // Flash confirmation back up to your production dashboard console links
                 controlChannel.postMessage({ command: "STATUS_UPDATE", value: "LIVE" });
                 console.log("Composited viewport securely broadcast to endpoint targets!");
 
@@ -238,7 +238,6 @@
             }
         }
 
-        // Fire request sync to fill layout data if dashboard is already open
         window.addEventListener("DOMContentLoaded", () => {
             controlChannel.postMessage({ command: "REQUEST_SYNC", value: true });
         });
