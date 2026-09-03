@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Stream Studio Deck</title>
+    <title>Stream Studio Deck - Fullscreen Stacking Edition</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; display: grid; grid-template-columns: 360px 1fr; gap: 20px; height: 100vh; }
@@ -10,87 +10,155 @@
         #live-viewport-container { display: flex; align-items: center; justify-content: center; background: #090d16; border-radius: 8px; border: 1px solid #1e293b; position: relative; }
         
         /* Strict 16:9 Master 1080p Composition Boundary Container Box */
-        #master-stream-viewport { width: 100%; max-width: 1024px; aspect-ratio: 16/9; position: relative; background: #000; overflow: hidden; }
+        #master-stream-viewport { 
+            width: 100%; 
+            max-width: 1024px; 
+            aspect-ratio: 16/9; 
+            position: relative; 
+            background: #000; 
+            overflow: hidden; 
+        }
         #bg-gif-layer { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; }
-        .overlay-frame { position: absolute; border: none; z-index: 2; width: 300px; height: 400px; top: 50px; left: 50px; }
+        
+        /* FIX: Injected layers are automatically centered, borderless, and locked to full-screen 1080p bounds */
+        .overlay-frame { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            background: transparent;
+        }
         
         h2 { font-size: 13px; color: #a855f7; text-transform: uppercase; margin-bottom: 5px; border-bottom: 1px solid #334155; padding-bottom: 5px; margin-top: 10px; }
-        input[type=text], input[type=range] { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff; margin-bottom: 10px; }
+        input[type=text], select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff; margin-bottom: 10px; }
         audio { width: 100%; margin-bottom: 10px; }
-        button { background: #3b82f6; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600; width: 100%; }
+        button { background: #3b82f6; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600; width: 100%; margin-bottom: 5px; }
         button:hover { background: #2563eb; }
+        .danger-btn { background: #ef4444; padding: 4px 8px; font-size: 11px; width: auto; margin-bottom: 0; }
+        .danger-btn:hover { background: #dc2626; }
         .success-btn { background: #22c55e; margin-top: auto; padding: 12px; }
         .success-btn:hover { background: #16a34a; }
-        .slider-group { font-size: 12px; margin-bottom: 8px; display: grid; grid-template-columns: 80px 1fr; align-items: center; }
+        
+        /* Visual tracker row for active layers currently stacked on your stream */
+        .layer-item { background: #131b2e; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #334155; }
+        .layer-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
     </style>
 </head>
 <body>
     <div id="control-panel">
         <h2>1. Base Background Ingestion</h2>
         <input type="text" id="gifUrlInput" placeholder="Paste Background GIF URL..." onchange="updateBackgroundGif(this.value)">
-        
-        <!-- Raw target music player link asset with media parameters configured -->
-        <audio id="bg-music-player" src="https://github.com/dabombomba/stream/raw/refs/heads/main/music.wav" controls loop></audio>
+        <audio id="bg-music-player" src="https://dabombomba.github.io/stream/music.wav" controls loop></audio>
 
-        <h2>2. Web Overlay Injection</h2>
+        <h2>2. Web Overlay Injection (16:9 Fullscreen)</h2>
+        <input type="text" id="overlayNameInput" placeholder="Layer Label (e.g., Chat, Alerts)...">
         <input type="text" id="overlayUrlInput" placeholder="https://github.io">
-        <button onclick="injectWebOverlay()">🔌 Inject Overlay Layer</button>
+        <button onclick="injectFullscreenWebOverlay()">🔌 Inject Stacked Layer</button>
 
-        <h2>3. Layer Placement Editor</h2>
-        <div class="slider-group"><span>Left (X):</span><input type="range" id="x-slide" min="0" max="1024" oninput="moveLayer('left', this.value)"></div>
-        <div class="slider-group"><span>Top (Y):</span><input type="range" id="y-slide" min="0" max="576" oninput="moveLayer('top', this.value)"></div>
-        <div class="slider-group"><span>Width:</span><input type="range" id="w-slide" min="100" max="1024" oninput="moveLayer('width', this.value)"></div>
-        <div class="slider-group"><span>Height:</span><input type="range" id="h-slide" min="100" max="576" oninput="moveLayer('height', this.value)"></div>
+        <h2>3. Active Production Stacking Vault</h2>
+        <div id="active-layers-bank">
+            <!-- Injected layers stack list renders here dynamically -->
+        </div>
 
         <button id="liveBtn" class="success-btn" onclick="startWhipStreaming()">🚀 GO LIVE VIA WORKER</button>
     </div>
 
     <div id="live-viewport-container">
         <div id="master-stream-viewport">
-            <!-- Raw query layout parameters applied directly to bypass GitHub HTML parsing limits -->
-            <img id="bg-gif-layer" src="https://github.com/dabombomba/stream/blob/main/image.GIF?raw=true" alt="Background Loop">
+            <img id="bg-gif-layer" src="https://dabombomba.github.io/stream/image.gif" alt="Background Loop">
         </div>
     </div>
     <script>
-        // Your live deployed Cloudflare Worker URL
+        // Replace with your live deployed Cloudflare Worker URL route
         const WORKER_URL = "https://omm.jacksonhazlett.workers.dev/";
-        let activeOverlay = null;
+        
+        // This is your active production inventory registry bank
+        let stackedOverlaysRegistry = [];
 
         function updateBackgroundGif(url) {
             if(url) document.getElementById("bg-gif-layer").src = url;
         }
 
-        function injectWebOverlay() {
-            const url = document.getElementById("overlayUrlInput").value.trim();
-            if (!url) return;
-            if (activeOverlay) activeOverlay.remove();
-            
-            activeOverlay = document.createElement("iframe");
-            activeOverlay.src = url;
-            activeOverlay.className = "overlay-frame";
-            document.getElementById("master-stream-viewport").appendChild(activeOverlay);
+        function injectFullscreenWebOverlay() {
+            const nameInput = document.getElementById("overlayNameInput");
+            const urlInput = document.getElementById("overlayUrlInput");
+            const name = nameInput.value.trim() || `Overlay Track ${stackedOverlaysRegistry.length + 1}`;
+            const url = urlInput.value.trim();
+
+            if (!url) {
+                alert("Please provide a valid web overlay asset URL link.");
+                return;
+            }
+
+            const uniqueLayerId = "layer-" + Date.now();
+            const viewport = document.getElementById("master-stream-viewport");
+
+            // 1. Create the physical iframe element container and push it live to the DOM viewport
+            const iframe = document.createElement("iframe");
+            iframe.src = url;
+            iframe.id = uniqueLayerId;
+            iframe.className = "overlay-frame";
+            iframe.allow = "autoplay";
+            viewport.appendChild(iframe);
+
+            // 2. Log metadata directly into your storage registry bank array
+            stackedOverlaysRegistry.push({ id: uniqueLayerId, name: name, url: url });
+
+            // 3. Reset input fields and sync layout dashboard listing boxes
+            nameInput.value = "";
+            urlInput.value = "";
+            renderActiveLayersBankUI();
         }
 
-        function moveLayer(property, val) {
-            if (!activeOverlay) return;
-            if (property === 'left' || property === 'top' || property === 'width' || property === 'height') {
-                activeOverlay.style[property] = val + "px";
-            }
+        function removeStackedLayer(layerId) {
+            // 1. Wipe the physical element block straight off your screen viewport monitor
+            const element = document.getElementById(layerId);
+            if (element) element.remove();
+
+            // 2. Expel the record from your internal repository memory block
+            stackedOverlaysRegistry = stackedOverlaysRegistry.filter(layer => layer.id !== layerId);
+
+            // 3. Update active production status elements labels
+            renderActiveLayersBankUI();
         }
-                async function startWhipStreaming() {
+
+        function renderActiveLayersBankUI() {
+            const bankContainer = document.getElementById("active-layers-bank");
+            bankContainer.innerHTML = "";
+
+            if (stackedOverlaysRegistry.length === 0) {
+                bankContainer.innerHTML = `<span style="font-size:11px; color:#64748b; font-style:italic;">No custom web sources injected yet.</span>`;
+                return;
+            }
+
+            // Loop through entries to paint your active layer status nodes list
+            stackedOverlaysRegistry.forEach((layer, index) => {
+                const row = document.createElement("div");
+                row.className = "layer-item";
+                row.innerHTML = `
+                    <span class="layer-name">#${index + 1} [${layer.name}]</span>
+                    <button class="danger-btn" onclick="removeStackedLayer('${layer.id}')">🗑️ Remove</button>
+                `;
+                bankContainer.appendChild(row);
+            });
+        }
+        async function startWhipStreaming() {
             const btn = document.getElementById("liveBtn");
             btn.disabled = true;
             btn.textContent = "TRANSMITTING TO WORKER...";
             try {
                 const viewport = document.getElementById("master-stream-viewport");
                 
-                // Set up a high-performance 1080p stream compositor buffer
+                // Initialize a high-fidelity 1080p background stream composition canvas
                 const captureCanvas = document.createElement("canvas");
                 captureCanvas.width = 1920;
                 captureCanvas.height = 1080;
                 const ctx = captureCanvas.getContext("2d");
                 const gifElement = document.getElementById("bg-gif-layer");
 
+                // Flatten and redraw layers frame-by-frame for the WebRTC outgoing pipe
                 function compositeBufferLoop() {
                     if (btn.textContent === "🔴 STREAM ONLINE" || btn.textContent === "TRANSMITTING TO WORKER...") {
                         requestAnimationFrame(compositeBufferLoop);
@@ -100,55 +168,40 @@
                         ctx.drawImage(gifElement, 0, 0, 1920, 1080);
                     } catch(e) {}
                     
-                    // FIX: Extract your active slider settings and composite them live
-                    if (activeOverlay) {
-                        const xVal = parseFloat(document.getElementById("x-slide").value) || 0;
-                        const yVal = parseFloat(document.getElementById("y-slide").value) || 0;
-                        const wVal = parseFloat(document.getElementById("w-slide").value) || 300;
-                        const hVal = parseFloat(document.getElementById("h-slide").value) || 400;
-
-                        // Map your workspace coordinate slider dimensions onto the 1080p canvas grid
-                        // Master view width factor is 1024 (1920 / 1024 = 1.875)
-                        // Master view height factor is 576 (1080 / 576 = 1.875)
-                        const dx = xVal * 1.875;
-                        const dy = yVal * 1.875;
-                        const dw = wVal * 1.875;
-                        const dh = hVal * 1.875;
-
-                        ctx.save();
-                        // Draw your stream layout placeholder box cleanly onto the canvas
-                        ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
-                        ctx.fillRect(dx, dy, dw, dh);
-                        ctx.strokeStyle = "#a855f7";
-                        ctx.lineWidth = 6;
-                        ctx.strokeRect(dx, dy, dw, dh);
-                        
-                        ctx.fillStyle = "#ffffff";
-                        ctx.font = "bold 32px sans-serif";
-                        ctx.fillText("💬 CHAT OVERLAY", dx + 25, dy + 60);
-                        ctx.fillStyle = "#a855f7";
-                        ctx.font = "20px monospace";
-                        ctx.fillText("🔒 Live Ingestion Active", dx + 25, dy + 100);
-                        ctx.restore();
-                    }
+                    // Traverse your active array to generate metadata box traces for the worker stream
+                    stackedOverlaysRegistry.forEach((layer) => {
+                        const iframeElement = document.getElementById(layer.id);
+                        if (iframeElement && iframeElement.style.display !== "none") {
+                            // Canvas rendering boundaries cannot slice into raw cross-origin frames text rows, 
+                            // so a high-performance vector banner represents the asset tracks cleanly.
+                            ctx.save();
+                            ctx.fillStyle = "rgba(168, 85, 247, 0.05)";
+                            ctx.fillRect(0, 0, 1920, 1080);
+                            ctx.strokeStyle = "#a855f7";
+                            ctx.lineWidth = 4;
+                            ctx.strokeRect(10, 10, 1900, 1060);
+                            ctx.restore();
+                        }
+                    });
                 }
                 compositeBufferLoop();
 
                 // 1. Capture the 1080p Canvas Video Track
                 const videoStream = captureCanvas.captureStream(30); 
-                const videoTrack = videoStream.getVideoTracks()[0];
+                const videoTrack = videoStream.getVideoTracks();
 
-                // 2. Capture Microphone Hardware Audio Track
+                // 2. Capture Background Ingestion Audio Track
                 const audioElement = document.getElementById("bg-music-player");
                 const audioStream = audioElement.captureStream ? audioElement.captureStream() : audioElement.mozCaptureStream();
-                const audioTrack = audioStream.getAudioTracks()[0];
+                const audioTrack = audioStream.getAudioTracks();
 
                 // 3. Bundle Tracks into a single MediaStream Output Box
                 const outboundStream = new MediaStream();
-                outboundStream.addTrack(videoTrack);
-                if (audioTrack) {
-                    outboundStream.addTrack(audioTrack);
+                outboundStream.addTrack(videoTrack[0]);
+                if (audioTrack && audioTrack.length > 0) {
+                    outboundStream.addTrack(audioTrack[0]);
                 }
+
                 // 4. Mount a secure WebRTC connection layer over to a valid public STUN target
                 const pc = new RTCPeerConnection({
                     iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
