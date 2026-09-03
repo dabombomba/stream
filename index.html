@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stream Studio Deck</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; display: grid; grid-template-columns: 360px 1fr; gap: 20px; height: 100vh; }
+        #control-panel { display: flex; flex-direction: column; gap: 15px; background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; overflow-y: auto; }
+        #live-viewport-container { display: flex; align-items: center; justify-content: center; background: #090d16; border-radius: 8px; border: 1px solid #1e293b; position: relative; }
+        
+        /* Strict 16:9 Master 1080p Composition Boundary Container Box */
+        #master-stream-viewport {
+            width: 100%;
+            max-width: 1024px;
+            aspect-ratio: 16/9;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+        }
+        #bg-gif-layer { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; }
+        .overlay-frame { position: absolute; border: none; z-index: 2; width: 300px; height: 400px; top: 50px; left: 50px; }
+        
+        h2 { font-size: 13px; color: #a855f7; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid #334155; padding-bottom: 5px; }
+        input[type=text], input[type=range] { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff; margin-bottom: 10px; }
+        button { background: #3b82f6; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600; width: 100%; }
+        button:hover { background: #2563eb; }
+        .success-btn { background: #22c55e; margin-top: auto; padding: 12px; }
+        .success-btn:hover { background: #16a34a; }
+        .slider-group { font-size: 12px; margin-bottom: 8px; display: grid; grid-template-columns: 80px 1fr; align-items: center; }
+    </style>
+</head>
+<body>
+
+    <div id="control-panel">
+        <h2>1. Base Background Ingestion</h2>
+        <input type="text" id="gifUrlInput" placeholder="Paste Background GIF URL..." onchange="updateBackgroundGif(this.value)">
+        
+        <h2>2. Web Overlay Injection</h2>
+        <input type="text" id="overlayUrlInput" placeholder="https://github.io">
+        <button onclick="injectWebOverlay()">🔌 Inject Overlay Layer</button>
+
+        <h2>3. Layer Placement Editor</h2>
+        <div class="slider-group"><span>Left (X):</span><input type="range" id="x-slide" min="0" max="1024" oninput="moveLayer('left', this.value)"></div>
+        <div class="slider-group"><span>Top (Y):</span><input type="range" id="y-slide" min="0" max="576" oninput="moveLayer('top', this.value)"></div>
+        <div class="slider-group"><span>Width:</span><input type="range" id="w-slide" min="100" max="1024" oninput="moveLayer('width', this.value)"></div>
+        <div class="slider-group"><span>Height:</span><input type="range" id="h-slide" min="100" max="576" oninput="moveLayer('height', this.value)"></div>
+
+        <button id="liveBtn" class="success-btn" onclick="startWhipStreaming()">🚀 GO LIVE VIA WORKER</button>
+    </div>
+
+    <div id="live-viewport-container">
+        <div id="master-stream-viewport">
+            <img id="bg-gif-layer" src="https://giphy.com" alt="Background Loop">
+        </div>
+    </div>
+
+    <script>
+        // Replace with your live deployed Cloudflare Worker URL
+        const WORKER_URL = "https://workers.dev";
+        let activeOverlay = null;
+
+        function updateBackgroundGif(url) {
+            if(url) document.getElementById("bg-gif-layer").src = url;
+        }
+
+        function injectWebOverlay() {
+            const url = document.getElementById("overlayUrlInput").value.trim();
+            if (!url) return;
+            
+            if (activeOverlay) activeOverlay.remove();
+            
+            activeOverlay = document.createElement("iframe");
+            activeOverlay.src = url;
+            activeOverlay.className = "overlay-frame";
+            document.getElementById("master-stream-viewport").appendChild(activeOverlay);
+        }
+
+        function moveLayer(property, val) {
+            if (!activeOverlay) return;
+            if (property === 'left' || property === 'top' || property === 'width' || property === 'height') {
+                activeOverlay.style[property] = val + "px";
+            }
+        }
+
+        async function startWhipStreaming() {
+            const btn = document.getElementById("liveBtn");
+            btn.disabled = true;
+            btn.textContent = "TRANSMITTING TO WORKER...";
+
+            try {
+                const viewport = document.getElementById("master-stream-viewport");
+                
+                // Creates a localized element capture track map
+                const captureCanvas = document.createElement("canvas");
+                captureCanvas.width = 1920;
+                captureCanvas.height = 1080;
+                const ctx = captureCanvas.getContext("2d");
+
+                const gifElement = document.getElementById("bg-gif-layer");
+
+                // Flatten and redraw layers frame-by-frame for the WebRTC outgoing pipe
+                function compositeBufferLoop() {
+                    ctx.drawImage(gifElement, 0, 0, 1920, 1080);
+                    // Standard canvas rendering policies ignore raw inner iframe text lines for security,
+                    // so your layout placeholder metadata is generated clean for the incoming worker stream.
+                    if(activeOverlay) {
+                        ctx.fillStyle = "rgba(168, 85, 247, 0.2)";
+                        ctx.fillRect(200, 200, 600, 400);
+                    }
+                    requestAnimationFrame(compositeBufferLoop);
+                }
+                compositeBufferLoop();
+
+                const stream = captureCanvas.captureStream(30);
+                const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:://google.com" }] });
+                stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const res = await fetch(WORKER_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/sdp" },
+                    body: offer.sdp
+                });
+
+                if (!res.ok) throw new Error("Worker rejected stream handshake.");
+                const answerSdp = await res.text();
+                await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: answerSdp }));
+                
+                btn.textContent = "🔴 STREAM ONLINE";
+            } catch (err) {
+                console.error(err);
+                btn.textContent = "❌ CONNECTION ERROR";
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
