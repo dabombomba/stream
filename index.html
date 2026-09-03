@@ -81,7 +81,7 @@
             if(url) document.getElementById("bg-gif-layer").src = url;
         }
 
-        function injectFullscreenWebOverlay() {
+                function injectFullscreenWebOverlay() {
             const nameInput = document.getElementById("overlayNameInput");
             const urlInput = document.getElementById("overlayUrlInput");
             const name = nameInput.value.trim() || `Overlay Track ${stackedOverlaysRegistry.length + 1}`;
@@ -95,22 +95,34 @@
             const uniqueLayerId = "layer-" + Date.now();
             const viewport = document.getElementById("master-stream-viewport");
 
-            // 1. Create the physical iframe element container and push it live to the DOM viewport
-            const iframe = document.createElement("iframe");
-            iframe.src = url;
-            iframe.id = uniqueLayerId;
-            iframe.className = "overlay-frame";
-            iframe.allow = "autoplay";
-            viewport.appendChild(iframe);
+            // FIX: Smart element router detects if the incoming link is a web overlay or a transparent PNG/GIF graphic
+            const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg)/i.test(url);
+            let targetSourceElement;
 
-            // 2. Log metadata directly into your storage registry bank array
+            if (isImageFile) {
+                // Instantiate a native picture container to preserve alpha transparency channels perfectly
+                targetSourceElement = document.createElement("img");
+                targetSourceElement.src = url;
+            } else {
+                // Keep the standard web portal block for functional chat and widgets layers
+                targetSourceElement = document.createElement("iframe");
+                targetSourceElement.src = url;
+                targetSourceElement.allow = "autoplay";
+            }
+
+            targetSourceElement.id = uniqueLayerId;
+            targetSourceElement.className = "overlay-frame";
+            viewport.appendChild(targetSourceElement);
+
+            // Log metadata directly into your storage registry bank array
             stackedOverlaysRegistry.push({ id: uniqueLayerId, name: name, url: url });
 
-            // 3. Reset input fields and sync layout dashboard listing boxes
+            // Reset input fields and sync layout dashboard listing boxes
             nameInput.value = "";
             urlInput.value = "";
             renderActiveLayersBankUI();
         }
+
 
         function removeStackedLayer(layerId) {
             // 1. Wipe the physical element block straight off your screen viewport monitor
