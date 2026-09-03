@@ -1,175 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Live Stream Output Canvas Engine</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body, html { width: 100%; height: 100%; background: #090d16; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-        
-        /* Enforces a perfect 16:9 aspect ratio target while staying completely resizable friendly on your monitor */
-        #master-stream-viewport {
-            width: 100vmin;
-            aspect-ratio: 16/9;
-            position: relative;
-            background: #000000;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.55);
-            overflow: hidden;
-        }
-
-        /* Standardizes fluid positioning constraints for all video tracks and web iframes */
-        .managed-source {
-            position: absolute;
-            transition: all 0.2s ease-out;
-            border: 0;
-            object-fit: cover;
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <!-- The exact video layout container box that gets composited and broadcast live -->
-    <div id="master-stream-viewport"></div>
-
-    <script>
-        const WORKER_URL = "https://workers.dev";
-        const controlChannel = new BroadcastChannel("stream_control");
-        
-        let peerConnection = null;
-        let masterStream = null;
-        let activeHardwareVideoFeeds = {};
-        let currentProductionState = null;
-
-        controlChannel.onmessage = async (event) => {
-            const { command, value } = event.data;
-            if (command === "SYNC_PRODUCTION") {
-                currentProductionState = value;
-                await processAndSyncLayoutElements(value);
-            }
-            if (command === "START_BROADCAST") {
-                goLiveViaWHIPPipeline();
-            }
-        };
-        async function processAndSyncLayoutElements(state) {
-            const { activeScene, scenes, sources } = state;
-            const activeSceneMap = scenes[activeScene];
-            const viewportContainer = document.getElementById("master-stream-viewport");
-
-            if (!activeSceneMap) return;
-
-            // Step 1: Clean up and remove layout elements deleted from the vault repository
-            const stateSourceKeys = new Set(Object.keys(activeSceneMap));
-            for (const childNode of Array.from(viewportContainer.children)) {
-                const cleanId = childNode.id.replace("-element", "");
-                if (!stateSourceKeys.has(cleanId)) {
-                    childNode.remove();
-                }
-            }
-
-            // Step 2: Traverse state arrays to map layer properties frame by frame
-            for (const [sourceId, sceneProperties] of Object.entries(activeSceneMap)) {
-                const vaultConfiguration = sources[sourceId];
-                const isLayerVisibleInScene = sceneProperties.visible !== false;
-
-                if (vaultConfiguration && vaultConfiguration.visible && isLayerVisibleInScene) {
-                    let sourceElement = document.getElementById(sourceId + "-element");
-
-                    // Instantiate specific source containers on the canvas viewport dynamically
-                    if (!sourceElement) {
-                        if (vaultConfiguration.type === "hardware") {
-                            sourceElement = document.createElement("video");
-                            sourceElement.autoplay = true;
-                            sourceElement.playsInline = true;
-                            sourceElement.muted = true;
-                        } else if (vaultConfiguration.type === "browser") {
-                            sourceElement = document.createElement("iframe");
-                            sourceElement.allow = "autoplay; camera; microphone";
-                        }
-                        sourceElement.id = sourceId + "-element";
-                        sourceElement.className = "managed-source";
-                        viewportContainer.appendChild(sourceElement);
-                    }
-
-                    // Dynamically apply compositor slider transformations from dashboard state
-                    sourceElement.style.display = "block";
-                    sourceElement.style.top = sceneProperties.top + "%";
-                    sourceElement.style.left = sceneProperties.left + "%";
-                    sourceElement.style.width = sceneProperties.width + "%";
-                    sourceElement.style.height = sceneProperties.height + "%";
-                    sourceElement.style.opacity = sceneProperties.opacity;
-                    sourceElement.style.zIndex = sceneProperties.zIndex;
-
-                    // Execute media stream track mount matching instance variables
-                    if (vaultConfiguration.type === "hardware" && vaultConfiguration.deviceId) {
-                        if (activeHardwareVideoFeeds[sourceId] !== vaultConfiguration.deviceId) {
-                            await mountHardwareStreamTrack(sourceElement.id, vaultConfiguration.deviceId, sourceId);
-                        }
-                    } else if (vaultConfiguration.type === "browser" && vaultConfiguration.url) {
-                        if (sourceElement.src !== vaultConfiguration.url) {
-                            sourceElement.src = vaultConfiguration.url;
-                        }
-                    }
-                } else {
-                    const existingElement = document.getElementById(sourceId + "-element");
-                    if (existingElement) existingElement.style.display = "none";
-                }
-            }
-        }
-        async function mountHardwareStreamTrack(elementId, physicalDeviceId, layerKey) {
-            try {
-                // Shut down previous active tracks on this layer to prevent device locking bugs
-                if (window[layerKey + "_hardwareStream"]) {
-                    window[layerKey + "_hardwareStream"].getTracks().forEach(track => track.stop());
-                }
-
-                const newHardwareStream = await navigator.mediaDevices.getUserMedia({
-                    video: { deviceId: { exact: physicalDeviceId }, width: 1920, height: 1080 }
-                });
-
-                window[layerKey + "_hardwareStream"] = newHardwareStream;
-                const videoElement = document.getElementById(elementId);
-                if (videoElement) {
-                    videoElement.srcObject = newHardwareStream;
-                }
-                activeHardwareVideoFeeds[layerKey] = physicalDeviceId;
-
-            } catch (error) {
-                console.error("Hardware video source routing pipeline dropped:", error);
-            }
-        }
-                async function goLiveViaWHIPPipeline() {
-            try {
-                const captureCanvas = document.createElement("canvas");
-                captureCanvas.width = 1920;
-                captureCanvas.height = 1080;
-                const cCtx = captureCanvas.getContext("2d");
-                const viewport = document.getElementById("master-stream-viewport");
-
-                function processViewportToBuffer() {
-                    if (!peerConnection || peerConnection.connectionState !== "closed") {
-                        requestAnimationFrame(processViewportToBuffer);
-                    }
-                    
-                    cCtx.fillStyle = "#000000";
-                    cCtx.fillRect(0, 0, captureCanvas.width, captureCanvas.height);
-
-                    const layers = Array.from(viewport.children).sort((a, b) => {
-                        return (parseInt(a.style.zIndex) || 0) - (parseInt(b.style.zIndex) || 0);
-                    });
-
                     layers.forEach(element => {
                         if (element.style.display === "none") return;
 
-                        const topPct = parseFloat(element.style.top) || 0;
-                        const leftPct = parseFloat(element.style.left) || 0;
-                        const widthPct = parseFloat(element.style.width) || 0;
-                        const heightPct = parseFloat(element.style.height) || 0;
-                        const opacity = parseFloat(element.style.opacity) || 1;
+                        // Pull the raw exact coordinates from the state configurations object data layer
+                        const layerId = element.id.replace("-element", "");
+                        const sceneLayers = currentProductionState.scenes[currentProductionState.activeScene];
+                        const transform = sceneLayers[layerId];
 
-                        const dx = (leftPct / 100) * captureCanvas.width;
-                        const dy = (topPct / 100) * captureCanvas.height;
-                        const dw = (widthPct / 100) * captureCanvas.width;
-                        const dh = (heightPct / 100) * captureCanvas.height;
+                        if (!transform) return;
+
+                        // FIX: Pull directly matching pixel layouts data maps
+                        const dx = transform.left;
+                        const dy = transform.top;
+                        const dw = transform.width;
+                        const dh = transform.height;
+                        const opacity = transform.opacity;
 
                         cCtx.save();
                         cCtx.globalAlpha = opacity;
@@ -177,9 +21,6 @@
                         if (element.tagName === "VIDEO" && element.readyState >= 2) {
                             cCtx.drawImage(element, dx, dy, dw, dh);
                         } 
-                        
-                        // FIX: Safely render a crisp text-box placeholder for chat overlays
-                        // This prevents the browser from tainting the canvas and crashing your stream!
                         else if (element.tagName === "IFRAME") {
                             cCtx.fillStyle = "rgba(15, 23, 42, 0.85)"; 
                             cCtx.fillRect(dx, dy, dw, dh);
@@ -189,7 +30,7 @@
                             
                             cCtx.fillStyle = "#ffffff";
                             cCtx.font = "bold 28px 'Segoe UI', sans-serif";
-                            cCtx.fillText("💬 " + element.id.replace("-element", "").toUpperCase(), dx + 25, dy + 55);
+                            cCtx.fillText("💬 " + currentProductionState.sources[layerId].name.toUpperCase(), dx + 25, dy + 55);
                             
                             cCtx.fillStyle = "#a855f7";
                             cCtx.font = "18px monospace";
@@ -197,50 +38,3 @@
                         }
                         cCtx.restore();
                     });
-                }
-
-                requestAnimationFrame(processViewportToBuffer);
-
-                masterStream = captureCanvas.captureStream(30);
-                
-                peerConnection = new RTCPeerConnection({
-                    iceServers: [{ urls: "stun:://google.com" }]
-                });
-
-                masterStream.getVideoTracks().forEach(track => peerConnection.addTrack(track, masterStream));
-
-                const sessionOffer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(sessionOffer);
-
-                const secureHandshakeResponse = await fetch(WORKER_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/sdp" },
-                    body: sessionOffer.sdp
-                });
-
-                if (!secureHandshakeResponse.ok) {
-                    throw new Error("Serverless proxy infrastructure rejected streaming parameters.");
-                }
-
-                const sdpVerificationAnswer = await secureHandshakeResponse.text();
-                
-                await peerConnection.setRemoteDescription(new RTCSessionDescription({
-                    type: "answer",
-                    sdp: sdpVerificationAnswer
-                }));
-
-                controlChannel.postMessage({ command: "STATUS_UPDATE", value: "LIVE" });
-                console.log("Composited viewport securely broadcast to endpoint targets!");
-
-            } catch (error) {
-                console.error("Transmission deployment handshake dropped:", error);
-                controlChannel.postMessage({ command: "STATUS_UPDATE", value: "ERROR" });
-            }
-        }
-
-        window.addEventListener("DOMContentLoaded", () => {
-            controlChannel.postMessage({ command: "REQUEST_SYNC", value: true });
-        });
-    </script>
-</body>
-</html>
