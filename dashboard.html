@@ -1,1 +1,278 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Production Control Panel</title><style>body{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#f8fafc;padding:20px;display:grid;grid-template-columns:320px 1fr;gap:20px}h1,h2{text-transform:uppercase;letter-spacing:.05em}h1{font-size:20px;color:#94a3b8;grid-column:span 2}#left-rail,#main-workspace{display:flex;flex-direction:column;gap:15px}.card{background:#1e293b;padding:15px;border-radius:8px;border:1px solid #334155}h2{font-size:13px;margin-bottom:12px;color:#a855f7}button{background:#3b82f6;color:#fff;border:none;padding:10px 14px;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;transition:background .2s}button:hover{background:#2563eb}button.danger{background:#ef4444}button.danger:hover{background:#dc2626}.list-item{display:flex;align-items:center;justify-content:space-between;background:#131b2e;padding:8px 12px;border-radius:6px;margin-bottom:6px;font-size:13px}input[type=text],select{width:100%;padding:10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px}#sources-vault-box{display:flex;flex-direction:column;gap:5px}</style></head><body><h1>🎬 Stream Control Deck</h1><div id="left-rail"><div class="card"><h2>Global Sources Vault</h2><div id="sources-vault-box"></div><div style="display:flex;gap:5px;margin-top:10px;flex-direction:column"><label style="font-size:11px;color:#64748b">ADD NEW HARDWARE SOURCE</label><input type="text" id="newSourceName" placeholder="Layer Name (e.g. My Webcam)..."><label style="font-size:11px;color:#64748b;margin-top:5px">SELECT HARDWARE DEVICE</label><select id="hardwareDeviceSelect"><option value="">Scanning hardware devices...</option></select><button style="margin-top:10px" onclick="createNewSourceInVault()">➕ Add Source Layer</button></div></div></div><div id="main-workspace"><div class="card"><h2>Active Sources Workspace</h2><p style="font-size:14px;color:#94a3b8;line-height:1.6">Type a name, select a specific camera/capture card from the dropdown menu, and click <b>Add Source Layer</b>. Your added sources will appear above. Toggling them between Visible and Hidden will immediately build or destroy the camera windows over on your stream output canvas.</p></div></div><script>const controlChannel=new BroadcastChannel("stream_control");const globalProductionState={sources:{}};function dispatchState(){controlChannel.postMessage({command:"SYNC_PRODUCTION",value:globalProductionState})}function renderDashboardUI(){const e=document.getElementById("sources-vault-box");e.innerHTML="";for(const[t,n]of Object.entries(globalProductionState.sources)){const a=document.createElement("div");a.className="list-item",a.innerHTML=`<span>${n.name}</span><button class="${n.visible?'':'danger'}" onclick="toggleGlobalSource('${t}')">${n.visible?'👁️ Visible':'📁 Hidden'}</button>`,e.appendChild(a)}}function toggleGlobalSource(e){globalProductionState.sources[e].visible=!globalProductionState.sources[e].visible,renderDashboardUI(),dispatchState()}function createNewSourceInVault(){const e=document.getElementById("newSourceName").value.trim(),t=document.getElementById("hardwareDeviceSelect").value,n=document.getElementById("hardwareDeviceSelect").options[document.getElementById("hardwareDeviceSelect").selectedIndex].text;if(e&&t){const a="layer-"+Date.now();globalProductionState.sources[a]={name:e,deviceId:t,deviceLabel:n,visible:!0},document.getElementById("newSourceName").value="",renderDashboardUI(),dispatchState()}else alert("Please type a layer name and select a hardware device option.")}async function scanSystemHardware(){try{await navigator.mediaDevices.getUserMedia({video:!0});const e=await navigator.mediaDevices.enumerateDevices(),t=document.getElementById("hardwareDeviceSelect");t.innerHTML="";const n=e.filter(e=>"videoinput"===e.kind);0===n.length?t.innerHTML='<option value="">No hardware found</option>':n.forEach((e,n)=>{const a=document.createElement("option");a.value=e.deviceId,a.text=e.label||`Camera Source Device ${n}`,t.appendChild(a)});renderDashboardUI(),dispatchState()}catch(e){console.error(e)}}controlChannel.onmessage=e=>{const{command:t}=e.data;"REQUEST_SYNC"===t&&dispatchState()};window.addEventListener("DOMContentLoaded",scanSystemHardware);</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Production Control Panel</title>
+    <style>
+        body{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#f8fafc;padding:20px;display:grid;grid-template-columns:320px 1fr;gap:20px}
+        h1,h2{text-transform:uppercase;letter-spacing:.05em}
+        h1{font-size:20px;color:#94a3b8;grid-column:span 2}
+        #left-rail,#main-workspace{display:flex;flex-direction:column;gap:15px}
+        .card{background:#1e293b;padding:15px;border-radius:8px;border:1px solid #334155}
+        h2{font-size:13px;margin-bottom:12px;color:#a855f7}
+        button{background:#3b82f6;color:#fff;border:none;padding:10px 14px;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;transition:background .2s}
+        button:hover{background:#2563eb}
+        button.active{background:#a855f7}
+        button.danger{background:#ef4444}
+        button.danger:hover{background:#dc2626}
+        button.success{background:#22c55e;width:100%;padding:12px}
+        .list-item{display:flex;align-items:center;justify-content:space-between;background:#131b2e;padding:8px 12px;border-radius:6px;margin-bottom:6px;font-size:13px}
+        .editor-row{display:grid;grid-template-columns:90px 1fr 45px;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;font-family:monospace}
+        input[type=range]{width:100%;accent-color:#a855f7}
+        input[type=text],select{width:100%;padding:10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:13px}
+        #scene-list-box{display:flex;flex-direction:column;gap:5px}
+    </style>
+</head>
+<body>
+    <h1>🎬 Switcher Production Deck</h1>
+
+    <div id="left-rail">
+        <div class="card" style="border-color:#22c55e">
+            <h2>Transmission</h2>
+            <button id="liveBtn" class="success" onclick="triggerDeployment()">🚀 DEPLOY WHIP LIVE</button>
+        </div>
+
+        <div class="card">
+            <h2>Scenes Switcher</h2>
+            <div id="scene-list-box"></div>
+            <div style="display:flex;gap:5px;margin-top:10px">
+                <input type="text" id="newSceneName" placeholder="New Scene Name...">
+                <button onclick="createNewSceneProfile()">➕ Create</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Global Sources Vault</h2>
+            <div id="sources-vault-box"></div>
+            <div style="display:flex;gap:5px;margin-top:10px;flex-direction:column">
+                <label style="font-size:11px;color:#64748b">ADD NEW HARDWARE SOURCE</label>
+                <input type="text" id="newSourceName" placeholder="Layer Name (e.g. My Webcam)...">
+                <label style="font-size:11px;color:#64748b;margin-top:5px">SELECT HARDWARE DEVICE</label>
+                <select id="hardwareScannerSelect"></select>
+                <button style="margin-top:10px" onclick="addHardwareSourceLayer()">➕ Add Video Layer</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-workspace">
+        <div class="card">
+            <h2>Source Ingestion Pipeline</h2>
+            <div style="display:grid;grid-template-columns:1fr;gap:10px">
+                <label style="font-size:11px;color:#64748b">ADD A WEB SOURCE LAYER (OVERLAYS/CHAT/ALERTS)</label>
+                <div style="display:flex;gap:5px">
+                    <input type="text" id="webNameInput" placeholder="Overlay Layer Name (e.g. Chat Overlay)..." style="width:40%">
+                    <input type="text" id="webUrlInput" placeholder="Paste Widget or Overlay Web URL here..." style="width:45%">
+                    <button onclick="addBrowserSourceLayer()" style="white-space:nowrap;width:15%">🔌 Inject URL</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Source Placement & Layer Compositor</h2>
+            <div style="margin-bottom:15px;display:flex;gap:15px;align-items:center">
+                <label style="font-size:13px">Target Layer:</label>
+                <select id="editLayerSelect" style="width:240px" onchange="syncEditorSliders()"></select>
+                <label><input type="checkbox" id="layerSceneVisibility" onchange="toggleLayerSceneVisibility()"> Include in active scene</label>
+            </div>
+            <div class="editor-row"><span>Top Pos:</span><input type="range" id="s-top" min="0" max="100" oninput="changeProperty('top',this.value)"><span id="v-top">0%</span></div>
+            <div class="editor-row"><span>Left Pos:</span><input type="range" id="s-left" min="0" max="100" oninput="changeProperty('left',this.value)"><span id="v-left">0%</span></div>
+            <div class="editor-row"><span>Width:</span><input type="range" id="s-width" min="0" max="100" oninput="changeProperty('width',this.value)"><span id="v-width">0%</span></div>
+            <div class="editor-row"><span>Height:</span><input type="range" id="s-height" min="0" max="100" oninput="changeProperty('height',this.value)"><span id="v-height">0%</span></div>
+            <div class="editor-row"><span>Opacity:</span><input type="range" id="s-opacity" min="0" max="100" oninput="changeProperty('opacity',this.value/100)"><span id="v-opacity">1.0</span></div>
+            <div class="editor-row"><span>Z-Index:</span><input type="range" id="s-zIndex" min="1" max="10" oninput="changeProperty('zIndex',this.value)"><span id="v-zIndex">1</span></div>
+        </div>
+    </div>
+    <script>
+        const controlChannel = new BroadcastChannel("stream_control");
+        const globalProductionState = {
+            activeScene: "Scene 1",
+            hardwareConfig: { selectedHardware: "" },
+            sources: {},
+            scenes: { "Scene 1": {} }
+        };
+
+        function dispatchState() {
+            controlChannel.postMessage({ command: "SYNC_PRODUCTION", value: globalProductionState });
+        }
+
+        function renderDashboardUI() {
+            const sceneBox = document.getElementById("scene-list-box");
+            sceneBox.innerHTML = "";
+            for (const sceneName of Object.keys(globalProductionState.scenes)) {
+                const btn = document.createElement("button");
+                btn.textContent = sceneName;
+                btn.className = sceneName === globalProductionState.activeScene ? "active" : "";
+                btn.onclick = () => {
+                    globalProductionState.activeScene = sceneName;
+                    renderDashboardUI();
+                    syncEditorSliders();
+                    dispatchState();
+                };
+                sceneBox.appendChild(btn);
+            }
+
+            const vaultBox = document.getElementById("sources-vault-box");
+            vaultBox.innerHTML = "";
+            const selectDropdown = document.getElementById("editLayerSelect");
+            const cachedValue = selectDropdown.value;
+            selectDropdown.innerHTML = "";
+
+            for (const [sourceId, sourceData] of Object.entries(globalProductionState.sources)) {
+                const item = document.createElement("div");
+                item.className = "list-item";
+                item.innerHTML = `<span>${sourceData.name}</span><button class="${sourceData.visible ? '' : 'danger'}" onclick="toggleGlobalSource('${sourceId}')">${sourceData.visible ? 'On' : 'Off'}</button>`;
+                vaultBox.appendChild(item);
+
+                const option = document.createElement("option");
+                option.value = sourceId;
+                option.textContent = sourceData.name;
+                selectDropdown.appendChild(option);
+            }
+            selectDropdown.value = cachedValue || "";
+        }
+
+        function toggleGlobalSource(sourceId) {
+            globalProductionState.sources[sourceId].visible = !globalProductionState.sources[sourceId].visible;
+            renderDashboardUI();
+            dispatchState();
+        }
+        function addHardwareSourceLayer() {
+            const name = document.getElementById("hwNameInput").value.trim();
+            const deviceId = document.getElementById("hardwareScannerSelect").value;
+            if (name && deviceId) {
+                const sourceId = "layer-" + Date.now();
+                globalProductionState.sources[sourceId] = { name: name, type: "hardware", deviceId: deviceId, visible: true };
+                for (const sceneName of Object.keys(globalProductionState.scenes)) {
+                    globalProductionState.scenes[sceneName][sourceId] = { top: 0, left: 0, width: 100, height: 100, opacity: 1, zIndex: 1, visible: true };
+                }
+                document.getElementById("hwNameInput").value = "";
+                renderDashboardUI();
+                document.getElementById("editLayerSelect").value = sourceId;
+                syncEditorSliders();
+                dispatchState();
+            } else {
+                alert("Type a layer name and verify your camera hardware connection.");
+            }
+        }
+
+        function addBrowserSourceLayer() {
+            const name = document.getElementById("webNameInput").value.trim();
+            const url = document.getElementById("webUrlInput").value.trim();
+            if (name && url) {
+                const sourceId = "layer-" + Date.now();
+                globalProductionState.sources[sourceId] = { name: name, type: "browser", url: url, visible: true };
+                for (const sceneName of Object.keys(globalProductionState.scenes)) {
+                    globalProductionState.scenes[sceneName][sourceId] = { top: 10, left: 10, width: 30, height: 40, opacity: 1, zIndex: 5, visible: true };
+                }
+                document.getElementById("webNameInput").value = "";
+                document.getElementById("webUrlInput").value = "";
+                renderDashboardUI();
+                document.getElementById("editLayerSelect").value = sourceId;
+                syncEditorSliders();
+                dispatchState();
+            } else {
+                alert("Provide an overlay tracking label and a valid web link URL.");
+            }
+        }
+
+        function createNewSceneProfile() {
+            const sceneName = document.getElementById("newSceneName").value.trim();
+            if (sceneName && !globalProductionState.scenes[sceneName]) {
+                globalProductionState.scenes[sceneName] = {};
+                for (const sourceId of Object.keys(globalProductionState.sources)) {
+                    globalProductionState.scenes[sceneName][sourceId] = { top: 10, left: 10, width: 30, height: 30, opacity: 1, zIndex: 2, visible: false };
+                }
+                globalProductionState.activeScene = sceneName;
+                document.getElementById("newSceneName").value = "";
+                renderDashboardUI();
+                syncEditorSliders();
+                dispatchState();
+            }
+        }
+
+        function syncEditorSliders() {
+            const activeScene = globalProductionState.activeScene;
+            const targetLayer = document.getElementById("editLayerSelect").value;
+            const properties = globalProductionState.scenes[activeScene][targetLayer] || { top: 0, left: 0, width: 0, height: 0, opacity: 1, zIndex: 1, visible: false };
+            
+            document.getElementById("layerSceneVisibility").checked = properties.visible;
+            document.getElementById("s-top").value = properties.top;
+            document.getElementById("v-top").textContent = properties.top + "%";
+            document.getElementById("s-left").value = properties.left;
+            document.getElementById("v-left").textContent = properties.left + "%";
+            document.getElementById("s-width").value = properties.width;
+            document.getElementById("v-width").textContent = properties.width + "%";
+            document.getElementById("s-height").value = properties.height;
+            document.getElementById("v-height").textContent = properties.height + "%";
+            document.getElementById("s-opacity").value = 100 * properties.opacity;
+            document.getElementById("v-opacity").textContent = properties.opacity;
+            document.getElementById("s-zIndex").value = properties.zIndex;
+            document.getElementById("v-zIndex").textContent = properties.zIndex;
+        }
+
+        function changeProperty(propertyKey, incomingValue) {
+            const activeScene = globalProductionState.activeScene;
+            const targetLayer = document.getElementById("editLayerSelect").value;
+            if (!globalProductionState.scenes[activeScene][targetLayer]) {
+                globalProductionState.scenes[activeScene][targetLayer] = {};
+            }
+            globalProductionState.scenes[activeScene][targetLayer][propertyKey] = parseFloat(incomingValue);
+            document.getElementById(`v-${propertyKey}`).textContent = propertyKey === "opacity" ? incomingValue : incomingValue + (propertyKey === "zIndex" ? "" : "%");
+            dispatchState();
+        }
+
+        function toggleLayerSceneVisibility() {
+            const activeScene = globalProductionState.activeScene;
+            const targetLayer = document.getElementById("editLayerSelect").value;
+            globalProductionState.scenes[activeScene][targetLayer].visible = document.getElementById("layerSceneVisibility").checked;
+            dispatchState();
+        }
+
+        function updateHardwareRoute() {
+            globalProductionState.hardwareConfig.selectedHardware = document.getElementById("hardwareScannerSelect").value;
+            dispatchState();
+        }
+
+        function triggerDeployment() {
+            const btn = document.getElementById("liveBtn");
+            btn.disabled = true;
+            btn.textContent = "CONNECTING WHIP PIPELINE...";
+            controlChannel.postMessage({ command: "START_BROADCAST", value: true });
+        }
+
+        async function scanHardwareSystem() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ video: true });
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const scannerSelect = document.getElementById("hardwareScannerSelect");
+                scannerSelect.innerHTML = "";
+                const videoDevices = devices.filter(d => "videoinput" === d.kind);
+                videoDevices.forEach((device, index) => {
+                    const opt = document.createElement("option");
+                    opt.value = device.deviceId;
+                    opt.text = device.label || `Camera Interface ${index}`;
+                    scannerSelect.appendChild(opt);
+                });
+                if (videoDevices.length > 0) {
+                    scannerSelect.selectedIndex = 0;
+                    globalProductionState.hardwareConfig.selectedHardware = scannerSelect.value;
+                }
+                renderDashboardUI();
+                syncEditorSliders();
+                dispatchState();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        controlChannel.onmessage = event => {
+            const { command, value } = event.data;
+            if ("REQUEST_SYNC" === command) dispatchState();
+            if ("STATUS_UPDATE" === command) {
+                document.getElementById("liveBtn").textContent = "LIVE" === value ? "🔴 ONLINE" : "❌ ERROR";
+            }
+        };
+        window.addEventListener("DOMContentLoaded", scanHardwareSystem);
+    </script>
+</body>
+</html>
