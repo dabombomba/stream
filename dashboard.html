@@ -1,152 +1,11 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Studio Production Dashboard</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
-        h1, h2 { text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
-        h1 { font-size: 20px; color: #94a3b8; grid-column: span 2; border-bottom: 2px solid #1e293b; padding-bottom: 10px; }
-        #left-rail, #main-workspace { display: flex; flex-direction: column; gap: 15px; }
-        .card { background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
-        h2 { font-size: 13px; color: #a855f7; border-bottom: 1px solid #334155; padding-bottom: 5px; }
-        button { background: #3b82f6; color: #fff; border: none; padding: 10px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: background .2s; width: 100%; margin-bottom: 5px; }
-        button:hover { background: #2563eb; }
-        button.active { background: #a855f7; }
-        button.danger { background: #ef4444; }
-        button.danger:hover { background: #dc2626; }
-        button.success { background: #22c55e; padding: 14px; font-size: 14px; }
-        button.success:hover { background: #16a34a; }
-        .list-item { display: flex; align-items: center; justify-content: space-between; background: #131b2e; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
-        .editor-row { display: grid; grid-template-columns: 90px 1fr 45px; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; font-family: monospace; }
-        input[type=range] { width: 100%; accent-color: #a855f7; }
-        input[type=text], select { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 13px; box-sizing: border-box; margin-bottom: 10px; }
-    </style>
-</head>
-<body>
-
-    <h1>🎬 Switcher Production Deck</h1>
-
-    <div id="left-rail">
-        <div class="card" style="border-color: #22c55e;">
-            <h2>Transmission</h2>
-            <button id="liveBtn" class="success" onclick="triggerDeployment()">🚀 DEPLOY LIVE BROADCAST</button>
-        </div>
-
-        <div class="card">
-            <h2>Scenes Switcher</h2>
-            <div id="scene-list-box"></div>
-            <div style="display: flex; gap: 5px; flex-direction: column; margin-top: 10px;">
-                <input type="text" id="newSceneName" placeholder="New Scene Name...">
-                <button onclick="createNewSceneProfile()">➕ Create Scene</button>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Global Sources Vault</h2>
-            <div id="sources-vault-box"></div>
-        </div>
-    </div>
-
-    <div id="main-workspace">
-        <div class="card">
-            <h2>Hardware Discovery Router</h2>
-            <label style="font-size: 11px; color: #64748b;">ACTIVE SYSTEM USB VIDEO DEVICE</label>
-            <select id="hardwareScannerSelect" onchange="updateHardwareRoute()"></select>
-        </div>
-
-        <div class="card">
-            <h2>Source Ingestion Pipeline</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <div>
-                    <label style="font-size: 11px; color: #64748b;">ADD HARDWARE LAYER (WEBCAM/CAPTURE CARD)</label>
-                    <input type="text" id="hwNameInput" placeholder="Name (e.g. Webcam Capture)...">
-                    <button onclick="addHardwareSourceLayer()">➕ Add Video Layer</button>
-                </div>
-                <div>
-                    <label style="font-size: 11px; color: #64748b;">ADD WEB GRAPHIC OVERLAY LAYER (ALERTS/CHAT)</label>
-                    <input type="text" id="webNameInput" placeholder="Name (e.g. Chat Overlay)...">
-                    <input type="text" id="webUrlInput" placeholder="URL Link...">
-                    <button onclick="addBrowserSourceLayer()">🔌 Inject Web Source</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Source Placement & Layer Compositor</h2>
-            <div style="margin-bottom: 15px; display: flex; gap: 15px; align-items: center;">
-                <label style="font-size: 13px;">Target Layer:</label>
-                <select id="editLayerSelect" style="width: 240px; margin-bottom: 0;" onchange="syncEditorSliders()"></select>
-                <label><input type="checkbox" id="layerSceneVisibility" onchange="toggleLayerSceneVisibility()"> Include in active scene</label>
-            </div>
-            <div class="editor-row"><span>Top Pos:</span><input type="range" id="s-top" min="0" max="100" oninput="changeProperty('top', this.value)"><span id="v-top">0%</span></div>
-            <div class="editor-row"><span>Left Pos:</span><input type="range" id="s-left" min="0" max="100" oninput="changeProperty('left', this.value)"><span id="v-left">0%</span></div>
-            <div class="editor-row"><span>Width:</span><input type="range" id="s-width" min="1" max="100" oninput="changeProperty('width', this.value)"><span id="v-width">0%</span></div>
-            <div class="editor-row"><span>Height:</span><input type="range" id="s-height" min="1" max="100" oninput="changeProperty('height', this.value)"><span id="v-height">0%</span></div>
-            <div class="editor-row"><span>Opacity:</span><input type="range" id="s-opacity" min="0" max="100" oninput="changeProperty('opacity', this.value/100)"><span id="v-opacity">1.0</span></div>
-            <div class="editor-row"><span>Z-Index:</span><input type="range" id="s-zIndex" min="1" max="10" oninput="changeProperty('zIndex', this.value)"><span id="v-zIndex">1</span></div>
-        </div>
-    </div>
-    <script>
-        const controlChannel = new BroadcastChannel("stream_control");
-        const globalProductionState = {
-            activeScene: "Scene 1",
-            hardwareConfig: { selectedHardware: "" },
-            sources: {},
-            scenes: { "Scene 1": {} }
-        };
-
-        function dispatchState() {
-            controlChannel.postMessage({ command: "SYNC_PRODUCTION", value: globalProductionState });
-        }
-
-        function renderDashboardUI() {
-            const sceneBox = document.getElementById("scene-list-box");
-            sceneBox.innerHTML = "";
-            for (const sceneName of Object.keys(globalProductionState.scenes)) {
-                const btn = document.createElement("button");
-                btn.textContent = sceneName;
-                btn.className = sceneName === globalProductionState.activeScene ? "active" : "";
-                btn.onclick = () => {
-                    globalProductionState.activeScene = sceneName;
-                    renderDashboardUI();
-                    syncEditorSliders();
-                    dispatchState();
-                };
-                sceneBox.appendChild(btn);
-            }
-
-            const vaultBox = document.getElementById("sources-vault-box");
-            vaultBox.innerHTML = "";
-            const selectDropdown = document.getElementById("editLayerSelect");
-            const cachedValue = selectDropdown.value;
-            selectDropdown.innerHTML = "";
-
-            for (const [sourceId, sourceData] of Object.entries(globalProductionState.sources)) {
-                const item = document.createElement("div");
-                item.className = "list-item";
-                item.innerHTML = `<span>${sourceData.name}</span><button class="${sourceData.visible ? '' : 'danger'}" style="width:auto; margin-bottom:0;" onclick="toggleGlobalSource('${sourceId}')">${sourceData.visible ? 'On' : 'Off'}</button>`;
-                vaultBox.appendChild(item);
-
-                const option = document.createElement("option");
-                option.value = sourceId;
-                option.textContent = sourceData.name;
-                selectDropdown.appendChild(option);
-            }
-            selectDropdown.value = cachedValue || selectDropdown.options[0]?.value || "";
-        }
-
-        function toggleGlobalSource(sourceId) {
-            globalProductionState.sources[sourceId].visible = !globalProductionState.sources[sourceId].visible;
-            renderDashboardUI();
-            dispatchState();
-        }
         function addHardwareSourceLayer() {
             const name = document.getElementById("hwNameInput").value.trim();
             const deviceId = document.getElementById("hardwareScannerSelect").value;
             if (name && deviceId) {
                 const sourceId = "layer-" + Date.now();
+                // 1. Log asset details directly into your asset warehouse registry bank
                 globalProductionState.sources[sourceId] = { name: name, type: "hardware", deviceId: deviceId, visible: true };
+                // 2. Assign initial spatial transform dimensions to layout scene parameters
                 for (const sceneName of Object.keys(globalProductionState.scenes)) {
                     globalProductionState.scenes[sceneName][sourceId] = { top: 0, left: 0, width: 100, height: 100, opacity: 1, zIndex: 1, visible: true };
                 }
@@ -156,7 +15,7 @@
                 syncEditorSliders();
                 dispatchState();
             } else {
-                alert("Provide a layer name and select an active hardware source.");
+                alert("Provide an asset name and confirm your computer hardware camera stream.");
             }
         }
 
@@ -165,7 +24,9 @@
             const url = document.getElementById("webUrlInput").value.trim();
             if (name && url) {
                 const sourceId = "layer-" + Date.now();
+                // 1. Log asset details directly into your asset warehouse registry bank
                 globalProductionState.sources[sourceId] = { name: name, type: "browser", url: url, visible: true };
+                // 2. Assign initial spatial transform dimensions to layout scene parameters
                 for (const sceneName of Object.keys(globalProductionState.scenes)) {
                     globalProductionState.scenes[sceneName][sourceId] = { top: 10, left: 10, width: 30, height: 40, opacity: 1, zIndex: 5, visible: true };
                 }
@@ -176,7 +37,7 @@
                 syncEditorSliders();
                 dispatchState();
             } else {
-                alert("Provide an overlay name label and a valid web link URL.");
+                alert("Provide an asset name label and a valid web link overlay URL.");
             }
         }
 
@@ -184,6 +45,7 @@
             const sceneName = document.getElementById("newSceneName").value.trim();
             if (sceneName && !globalProductionState.scenes[sceneName]) {
                 globalProductionState.scenes[sceneName] = {};
+                // Inject the current warehouse catalog parameters over to this scene bank layout
                 for (const sourceId of Object.keys(globalProductionState.sources)) {
                     globalProductionState.scenes[sceneName][sourceId] = { top: 10, left: 10, width: 30, height: 30, opacity: 1, zIndex: 2, visible: false };
                 }
@@ -236,11 +98,6 @@
             dispatchState();
         }
 
-        function updateHardwareRoute() {
-            globalProductionState.hardwareConfig.selectedHardware = document.getElementById("hardwareScannerSelect").value;
-            dispatchState();
-        }
-
         function triggerDeployment() {
             const btn = document.getElementById("liveBtn");
             btn.disabled = true;
@@ -261,10 +118,6 @@
                     opt.text = device.label || `Camera/Capture Card ${index}`;
                     scannerSelect.appendChild(opt);
                 });
-                if (videoDevices.length > 0) {
-                    scannerSelect.selectedIndex = 0;
-                    globalProductionState.hardwareConfig.selectedHardware = scannerSelect.value;
-                }
                 renderDashboardUI();
                 syncEditorSliders();
                 dispatchState();
