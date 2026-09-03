@@ -6,28 +6,17 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body, html { width: 100%; height: 100%; background: #090d16; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-        
-        /* Master 1080p target canvas that composites everything */
-        #masterStreamCanvas {
-            width: 100vmin;
-            aspect-ratio: 16/9;
-            background: #000000;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.55);
-        }
-        
-        /* Hidden hardware rendering bank layers used to capture frames */
+        #masterStreamCanvas { width: 100vmin; aspect-ratio: 16/9; background: #000000; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.55); }
         .hidden-vault { display: none; }
     </style>
 </head>
 <body>
 
-    <!-- This canvas collapses all your web pages and cameras into 1 target stream -->
     <canvas id="masterStreamCanvas" width="1920" height="1080"></canvas>
     <div id="hiddenMediaVault" class="hidden-vault"></div>
+
     <script>
-        // Replace this link with your live deployed Cloudflare Worker URL
         const WORKER_URL = "https://workers.dev";
-        
         const controlChannel = new BroadcastChannel("stream_control");
         const canvas = document.getElementById("masterStreamCanvas");
         const ctx = canvas.getContext("2d");
@@ -50,6 +39,8 @@
 
         async function syncMediaAssets(state) {
             const vault = document.getElementById("hiddenMediaVault");
+            if (!state || !state.sources) return;
+
             for (const [sourceId, sourceData] of Object.entries(state.sources)) {
                 if (sourceData.type === "hardware" && sourceData.deviceId) {
                     let video = document.getElementById(sourceId + "_video");
@@ -63,23 +54,29 @@
                     }
                     if (activeFeeds[sourceId] !== sourceData.deviceId) {
                         try {
+                            if (window[sourceId + "_stream"]) {
+                                window[sourceId + "_stream"].getTracks().forEach(t => t.stop());
+                            }
                             const stream = await navigator.mediaDevices.getUserMedia({
                                 video: { deviceId: { exact: sourceData.deviceId }, width: 1920, height: 1080 }
                             });
+                            window[sourceId + "_stream"] = stream;
                             video.srcObject = stream;
                             activeFeeds[sourceId] = sourceData.deviceId;
-                        } catch (err) { console.error(err); }
+                        } catch (err) { 
+                            console.error("Camera acquisition failed:", err); 
+                        }
                     }
                 }
             }
         }
-        // The Engine Loop: Draws frames at 60fps, rendering web layers safely
+
         function renderMasterProductionLoop() {
             requestAnimationFrame(renderMasterProductionLoop);
             ctx.fillStyle = "#000000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            if (!productionState) return;
+            if (!productionState || !productionState.scenes) return;
             const activeScene = productionState.activeScene;
             const sceneLayers = productionState.scenes[activeScene];
             if (!sceneLayers) return;
@@ -90,31 +87,47 @@
                 const sourceMeta = productionState.sources[sourceId];
                 if (sourceMeta && sourceMeta.visible && transform.visible) {
                     
-                    // Render Camera/Capture Card streams
+                    const drawX = transform.left * 19.2;
+                    const drawY = transform.top * 10.8;
+                    const drawW = transform.width * 19.2;
+                    const drawH = transform.height * 10.8;
+
                     if (sourceMeta.type === "hardware") {
                         const videoEl = document.getElementById(sourceId + "_video");
                         if (videoEl && videoEl.readyState >= 2) {
                             ctx.save();
                             ctx.globalAlpha = transform.opacity;
-                            ctx.drawImage(videoEl, transform.left * 19.2, transform.top * 10.8, transform.width * 19.2, transform.height * 10.8);
+                            ctx.drawImage(videoEl, drawX, drawY, drawW, drawH);
+                            ctx.restore();
+                        } else {
+                            // Fallback wireframe layout block if camera hardware stream is initializing
+                            ctx.save();
+                            ctx.globalAlpha = transform.opacity;
+                            ctx.strokeStyle = "#3b82f6";
+                            ctx.lineWidth = 4;
+                            ctx.strokeRect(drawX, drawY, drawW, drawH);
+                            ctx.fillStyle = "rgba(59, 130, 246, 0.1)";
+                            ctx.fillRect(drawX, drawY, drawW, drawH);
+                            ctx.fillStyle = "#ffffff";
+                            ctx.font = "bold 18px sans-serif";
+                            ctx.fillText(`📷 Loading Video: ${sourceMeta.name}`, drawX + 15, drawY + 35);
                             ctx.restore();
                         }
                     }
                     
-                    // Render Web overlays, text elements, goal boxes, and chat boxes safely 
                     if (sourceMeta.type === "browser") {
                         ctx.save();
                         ctx.globalAlpha = transform.opacity;
                         ctx.fillStyle = "rgba(168, 85, 247, 0.15)";
-                        ctx.fillRect(transform.left * 19.2, transform.top * 10.8, transform.width * 19.2, transform.height * 10.8);
+                        ctx.fillRect(drawX, drawY, drawW, drawH);
                         ctx.fillStyle = "#a855f7";
-                        ctx.fillRect(transform.left * 19.2, transform.top * 10.8, transform.width * 19.2, 4);
+                        ctx.fillRect(drawX, drawY, drawW, 4);
                         ctx.fillStyle = "#ffffff";
                         ctx.font = "bold 20px 'Segoe UI', sans-serif";
-                        ctx.fillText(`🌐 ${sourceMeta.name}`, transform.left * 19.2 + 15, transform.top * 10.8 + 35);
+                        ctx.fillText(`🌐 ${sourceMeta.name}`, drawX + 15, drawY + 35);
                         ctx.font = "14px monospace";
                         ctx.fillStyle = "#94a3b8";
-                        ctx.fillText(sourceMeta.url.slice(0, 30) + "...", transform.left * 19.2 + 15, transform.top * 10.8 + 65);
+                        ctx.fillText(sourceMeta.url.slice(0, 35) + "...", drawX + 15, drawY + 65);
                         ctx.restore();
                     }
                 }
@@ -123,9 +136,7 @@
 
         async function goLiveViaWHIP() {
             try {
-                // Capture the 1080p canvas composite as a single, compressed live video feed
                 masterStream = canvas.captureStream(30);
-                
                 peerConnection = new RTCPeerConnection({
                     iceServers: [{ urls: "stun:://google.com" }]
                 });
@@ -135,14 +146,13 @@
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
 
-                // Pipe connection description to your Cloudflare Worker Proxy
                 const response = await fetch(WORKER_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/sdp" },
                     body: offer.sdp
                 });
 
-                if (!response.ok) throw new Error("Worker endpoint rejected video handshake.");
+                if (!response.ok) throw new Error("Worker handshake dropped.");
                 const sdpAnswer = await response.text();
                 
                 await peerConnection.setRemoteDescription(new RTCSessionDescription({
